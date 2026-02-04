@@ -32,6 +32,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+.ruff_cache
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -175,3 +176,6 @@ cython_debug/
 # pixi environments
 .pixi
 *.egg-info
+
+# config file
+*.yaml
