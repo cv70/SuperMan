@@ -23,6 +23,8 @@ from ..agents import (
     Operations,
 )
 from ..agents.router import MessageRouter, create_router
+from ..workflow.priority_queue import PriorityQueue, Priority, QueueItem
+from ..agents.base import Message, MessageType
 
 
 class CompanyOrchestrator:
@@ -238,6 +240,56 @@ class CompanyOrchestrator:
             "summary": {
                 role: "OK" if "data" in report else "ERROR"
                 for role, report in reports.items()
+            },
+        }
+
+
+class PriorityOrchestrator(CompanyOrchestrator):
+    """Orchestrator with priority queue for message scheduling"""
+
+    def __init__(self):
+        super().__init__()
+        self.message_queue = PriorityQueue()
+
+    def enqueue_message(self, message: Message):
+        """Enqueue message with priority"""
+        priority = Priority(message.priority.value)
+        item = QueueItem(
+            priority=priority,
+            task_id=message.message_id,
+            payload={"message": message.__dict__},
+        )
+        self.message_queue.push(item)
+
+    async def process_next_message(self):
+        """Process highest priority message"""
+        if self.message_queue.is_empty():
+            return None
+
+        item = self.message_queue.pop()
+        message_data = item.payload.get("message", {})
+
+        message = Message(**message_data)
+
+        router = create_router()
+        recipient = await router.route(message)
+
+        agent = self.agents.get(recipient)
+        if agent:
+            response = await agent.process_message(message, self.state)
+            if response:
+                self.state["messages"].append(response)
+                return response
+
+        return None
+
+    def get_queue_stats(self):
+        """Get queue statistics"""
+        return {
+            "total_size": len(self.message_queue),
+            "by_priority": {
+                priority.name: len(self.message_queue.get_by_priority(priority))
+                for priority in Priority
             },
         }
 
