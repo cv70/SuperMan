@@ -178,4 +178,8 @@ cython_debug/
 *.egg-info
 
 # config file
-*.yaml
+*.yaml.worktrees
+
+# Worktrees directory
+.worktrees/
+worktrees/
