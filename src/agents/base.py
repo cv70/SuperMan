@@ -44,9 +44,23 @@ class Priority(Enum):
 
 
 class RetryStrategy(Enum):
-    FIXED = "fixed"
+    """重试策略枚举"""
+
+    NO_RETRY = "no_retry"
+    FIXED_DELAY = "fixed_delay"
     EXPONENTIAL_BACKOFF = "exponential_backoff"
-    LINEAR_BACKOFF = "linear_backoff"
+    JITTERED_BACKOFF = "jittered_backoff"
+    CIRCUIT_BREAKER = "circuit_breaker"
+
+
+class FallbackStrategy(Enum):
+    """降级策略"""
+
+    CACHE = "cache"
+    DEFAULT = "default"
+    GRACEFUL_DEGRADATION = "graceful"
+    MANUAL_OVERRIDE = "manual"
+    QUEUE_FOR_LATER = "queue"
 
 
 @dataclass
@@ -185,6 +199,19 @@ class BaseAgent(ABC):
             如果可以处理返回True
         """
         return self.state.workload < 0.8 and task.assigned_to == self.role
+
+    def has_capabilities(self, required_capabilities: List[str]) -> bool:
+        """检查智能体是否具备所需能力
+        Args:
+            required_capabilities: 所需能力列表
+        Returns:
+            如果具备所有所需能力返回True
+        """
+        agent_capabilities = set(self.capabilities)
+        required_set = set(required_capabilities)
+        return (
+            len(required_set) == 0 or agent_capabilities & required_set == required_set
+        )
 
     def update_workload(self, delta: float):
         """更新智能体工作负载 (0.0 到 1.0)

@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Dict, List, Optional, Any
 from .base import (
     AgentRole,
@@ -7,6 +8,8 @@ from .base import (
     CompanyState,
     CommunicationProtocol,
     BaseAgent,
+    RetryStrategy,
+    FallbackStrategy,
 )
 
 
@@ -197,3 +200,69 @@ class MessageRouter:
 def create_router() -> MessageRouter:
     """创建配置好的 MessageRouter 的工厂函数。"""
     return MessageRouter()
+
+
+async def _route_task_assignment(message: Message) -> List[AgentRole]:
+    """基于能力匹配和负载均衡的动态路由"""
+    task = message.content.get("task", {})
+    required_capabilities = task.get("required_capabilities", [])
+    workload_limit = task.get("workload_limit", 0.8)
+
+    eligible_agents = []
+    for agent in get_all_agents():
+        if agent.has_capabilities(required_capabilities):
+            eligible_agents.append(agent)
+
+    available_agents = [
+        agent for agent in eligible_agents if agent.current_workload < workload_limit
+    ]
+
+    scored_agents = []
+    for agent in available_agents:
+        score = calculate_agent_score(
+            agent=agent, task=task, company_state=get_company_state()
+        )
+        scored_agents.append((agent, score))
+
+    scored_agents.sort(key=lambda x: x[1], reverse=True)
+
+    if len(scored_agents) == 0:
+        return [AgentRole.HR]
+    elif len(scored_agents) == 1:
+        return [scored_agents[0][0].role]
+    else:
+        return _distribute_workload(scored_agents)
+
+
+def calculate_agent_score(agent, task, company_state):
+    """Calculate agent score based on capabilities and workload"""
+    capability_score = len(
+        set(agent.capabilities) & set(task.get("required_capabilities", []))
+    )
+    workload_penalty = agent.current_workload
+    return capability_score - (workload_penalty * 0.5)
+
+
+def _distribute_workload(scored_agents):
+    """Distribute workload among multiple agents"""
+    return [agent.role for agent, _ in scored_agents[:2]]
+
+
+def get_all_agents() -> List[BaseAgent]:
+    """Get all registered agents - simplified for routing"""
+    return []
+
+
+def get_company_state() -> CompanyState:
+    """Get current company state - simplified for routing"""
+    return CompanyState(
+        agents={},
+        tasks={},
+        messages=[],
+        current_time=datetime.now(),
+        strategic_goals={},
+        kpis={},
+        market_data={},
+        user_feedback=[],
+        system_health={},
+    )

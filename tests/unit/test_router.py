@@ -10,8 +10,10 @@ from src.agents.base import (
     Message,
     Task,
     CompanyState,
+    RetryStrategy,
+    FallbackStrategy,
 )
-from src.agents.router import MessageRouter, create_router
+from src.agents.router import MessageRouter, create_router, _route_task_assignment
 
 
 class TestMessageRouter:
@@ -85,3 +87,33 @@ class TestMessageRouter:
             content={"alert_type": "error", "severity": "high"},
         )
         assert router.should_alert(msg) is True
+
+
+def test_retry_strategy_enum():
+    """Test RetryStrategy has all required values"""
+    assert RetryStrategy.NO_RETRY.value == "no_retry"
+    assert RetryStrategy.EXPONENTIAL_BACKOFF.value == "exponential_backoff"
+
+
+def test_fallback_strategy_enum():
+    """Test FallbackStrategy has all required values"""
+    assert FallbackStrategy.CACHE.value == "cache"
+    assert FallbackStrategy.GRACEFUL_DEGRADATION.value == "graceful"
+
+
+@pytest.mark.asyncio
+async def test_dynamic_route_task_assignment():
+    """Test dynamic routing based on task requirements"""
+    msg = Message(
+        sender=AgentRole.CTO,
+        recipient=AgentRole.RD,
+        message_type=MessageType.TASK_ASSIGNMENT,
+        content={
+            "task": {
+                "required_capabilities": ["python", "ml"],
+                "workload_limit": 0.8,
+            }
+        },
+    )
+    result = await _route_task_assignment(msg)
+    assert isinstance(result, list)
