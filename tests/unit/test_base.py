@@ -13,6 +13,8 @@ from src.agents.base import (
     CompanyState,
     BaseAgent,
     CommunicationProtocol,
+    RetryStrategy,
+    MessageMetadata,
     create_task_id,
     format_timestamp,
     calculate_kpi_completion,
@@ -266,6 +268,57 @@ class TestValidateMessage:
         )
         delattr(msg, "sender")
         assert validate_message(msg) is False
+
+
+class TestRetryStrategy:
+    def test_all_retry_strategies_exist(self):
+        assert RetryStrategy.FIXED.value == "fixed"
+        assert RetryStrategy.EXPONENTIAL_BACKOFF.value == "exponential_backoff"
+        assert RetryStrategy.LINEAR_BACKOFF.value == "linear_backoff"
+
+
+class TestMessageMetadata:
+    def test_message_metadata_fields(self):
+        metadata = MessageMetadata(
+            message_id="msg_001",
+            correlation_id=None,
+            trace_id="trace_001",
+            sender=AgentRole.CEO,
+            recipients=[AgentRole.CTO],
+            message_type=MessageType.TASK_ASSIGNMENT,
+            priority=Priority.HIGH,
+            timestamp=datetime.now(),
+            expires_at=None,
+            response_required=True,
+            max_retries=3,
+            retry_strategy=RetryStrategy.EXPONENTIAL_BACKOFF,
+            metadata={"key": "value"},
+        )
+        assert metadata.message_id == "msg_001"
+        assert metadata.trace_id == "trace_001"
+        assert metadata.sender == AgentRole.CEO
+        assert len(metadata.recipients) == 1
+        assert metadata.response_required is True
+
+    def test_message_metadata_defaults(self):
+        metadata = MessageMetadata(
+            message_id="msg_002",
+            correlation_id=None,
+            trace_id="trace_002",
+            sender=AgentRole.RD,
+            recipients=[AgentRole.CTO],
+            message_type=MessageType.STATUS_REPORT,
+            priority=Priority.MEDIUM,
+            timestamp=datetime.now(),
+            expires_at=None,
+            response_required=False,
+            max_retries=3,
+            retry_strategy=RetryStrategy.FIXED,
+            metadata={},
+        )
+        assert metadata.correlation_id is None
+        assert metadata.expires_at is None
+        assert metadata.metadata == {}
 
 
 class TestMockAgent:

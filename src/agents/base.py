@@ -37,10 +37,47 @@ class MessageType(Enum):
 class Priority(Enum):
     """优先级枚举"""
 
-    LOW = "low"  # 低优先级
-    MEDIUM = "medium"  # 中等优先级
-    HIGH = "high"  # 高优先级
-    CRITICAL = "critical"  # 紧急优先级
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class RetryStrategy(Enum):
+    """重试策略枚举"""
+
+    NO_RETRY = "no_retry"
+    FIXED_DELAY = "fixed_delay"
+    EXPONENTIAL_BACKOFF = "exponential_backoff"
+    JITTERED_BACKOFF = "jittered_backoff"
+    CIRCUIT_BREAKER = "circuit_breaker"
+
+
+class FallbackStrategy(Enum):
+    """降级策略"""
+
+    CACHE = "cache"
+    DEFAULT = "default"
+    GRACEFUL_DEGRADATION = "graceful"
+    MANUAL_OVERRIDE = "manual"
+    QUEUE_FOR_LATER = "queue"
+
+
+@dataclass
+class MessageMetadata:
+    message_id: str
+    correlation_id: Optional[str]
+    trace_id: str
+    sender: AgentRole
+    recipients: List[AgentRole]
+    message_type: MessageType
+    priority: Priority
+    timestamp: datetime
+    expires_at: Optional[datetime]
+    response_required: bool
+    max_retries: int
+    retry_strategy: RetryStrategy
+    metadata: Dict[str, Any]
 
 
 @dataclass
@@ -163,6 +200,19 @@ class BaseAgent(ABC):
         """
         return self.state.workload < 0.8 and task.assigned_to == self.role
 
+    def has_capabilities(self, required_capabilities: List[str]) -> bool:
+        """检查智能体是否具备所需能力
+        Args:
+            required_capabilities: 所需能力列表
+        Returns:
+            如果具备所有所需能力返回True
+        """
+        agent_capabilities = set(self.capabilities)
+        required_set = set(required_capabilities)
+        return (
+            len(required_set) == 0 or agent_capabilities & required_set == required_set
+        )
+
     def update_workload(self, delta: float):
         """更新智能体工作负载 (0.0 到 1.0)
         Args:
@@ -198,7 +248,7 @@ class BaseAgent(ABC):
 
     def get_role_hierarchy(self) -> int:
         """获取决策层级级别，用于公司内部权限和优先级比较
-        
+
         Returns:
             层级值，值越大优先级越高，用于决策冲突解决和消息路由
         """

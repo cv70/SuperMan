@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Dict, List, Optional, Any
 from .base import (
     AgentRole,
@@ -7,6 +8,9 @@ from .base import (
     CompanyState,
     CommunicationProtocol,
     BaseAgent,
+    RetryStrategy,
+    FallbackStrategy,
+    Task,
 )
 
 
@@ -19,11 +23,9 @@ class MessageRouter:
         }
 
     def _default_approval_path(self) -> List[AgentRole]:
-        """预算相关审批的默认审批链。"""
         return [AgentRole.CFO, AgentRole.CEO]
 
-    def route(self, message: Message) -> AgentRole:
-        """根据消息类型将消息路由到适当的智能体。"""
+    async def route(self, message: Message) -> AgentRole:
         message_type = message.message_type
 
         if message_type == MessageType.TASK_ASSIGNMENT:
@@ -197,3 +199,176 @@ class MessageRouter:
 def create_router() -> MessageRouter:
     """创建配置好的 MessageRouter 的工厂函数。"""
     return MessageRouter()
+
+
+async def _route_task_assignment(message: Message) -> List[AgentRole]:
+    """基于能力匹配和负载均衡的动态路由"""
+    task = message.content.get("task", {})
+    required_capabilities = task.get("required_capabilities", [])
+    workload_limit = task.get("workload_limit", 0.8)
+
+    eligible_agents = []
+    for agent in get_all_agents():
+        if agent.has_capabilities(required_capabilities):
+            eligible_agents.append(agent)
+
+    available_agents = [
+        agent for agent in eligible_agents if agent.current_workload < workload_limit
+    ]
+
+    scored_agents = []
+    for agent in available_agents:
+        score = calculate_agent_score(
+            agent=agent, task=task, company_state=get_company_state()
+        )
+        scored_agents.append((agent, score))
+
+    scored_agents.sort(key=lambda x: x[1], reverse=True)
+
+    if len(scored_agents) == 0:
+        return [AgentRole.HR]
+    elif len(scored_agents) == 1:
+        return [scored_agents[0][0].role]
+    else:
+        return _distribute_workload(scored_agents)
+
+
+def calculate_agent_score(agent, task, company_state):
+    """Calculate agent score based on capabilities and workload"""
+    capability_score = len(
+        set(agent.capabilities) & set(task.get("required_capabilities", []))
+    )
+    workload_penalty = agent.current_workload
+    return capability_score - (workload_penalty * 0.5)
+
+
+def _distribute_workload(scored_agents):
+    """Distribute workload among multiple agents"""
+    return [agent.role for agent, _ in scored_agents[:2]]
+
+
+def get_all_agents() -> List[BaseAgent]:
+    """Get all registered agents - simplified for routing"""
+    return []
+
+
+def get_company_state() -> CompanyState:
+    """Get current company state - simplified for routing"""
+    return CompanyState(
+        agents={},
+        tasks={},
+        messages=[],
+        current_time=datetime.now(),
+        strategic_goals={},
+        kpis={},
+        market_data={},
+        user_feedback=[],
+        system_health={},
+    )
+
+
+class DynamicRouteEngine(MessageRouter):
+    """Dynamic routing engine with capability-based routing"""
+
+    def __init__(self):
+        super().__init__()
+        self._dynamic_routes = {}
+
+    async def route(self, message: Message) -> AgentRole:
+        message_type = message.message_type
+
+        if message_type == MessageType.TASK_ASSIGNMENT:
+            task = message.content.get("task", {})
+            assigned_to = task.get("assigned_to")
+
+            if assigned_to:
+                return assigned_to
+
+            return await self._route_dynamic_task(message)
+
+        elif message_type == MessageType.STATUS_REPORT:
+            # Static routing to CEO
+            return AgentRole.CEO
+
+        elif message_type == MessageType.DATA_REQUEST:
+            return self._route_data_request(message)
+
+        elif message_type == MessageType.DATA_RESPONSE:
+            return message.content.get("requester", message.sender)
+
+        elif message_type == MessageType.APPROVAL_REQUEST:
+            return self._get_approver(message)
+
+        elif message_type == MessageType.ALERT:
+            return AgentRole.OPERATIONS
+
+        elif message_type == MessageType.COLLABORATION:
+            return self._route_dynamic_collaboration(message)
+
+        return AgentRole.OPERATIONS
+
+    async def _route_dynamic_task(self, message: Message) -> AgentRole:
+        task = message.content.get("task", {})
+
+        from src.workflow.delegate import delegate_task
+        state = self._get_company_state()
+
+        if state and state.get("agents", {}):
+            task_obj = Task(
+                task_id=task.get("task_id", ""),
+                title=task.get("title", ""),
+                description=task.get("description", ""),
+                assigned_to=task.get("assigned_to", AgentRole.RD),
+                assigned_by=task.get("assigned_by", AgentRole.CTO),
+                priority=Priority(task.get("priority", "medium")),
+                required_capabilities=task.get("required_capabilities", []),
+            )
+            return await delegate_task(task_obj, state)
+
+        return AgentRole.RD
+
+    def _route_dynamic_collaboration(self, message: Message) -> AgentRole:
+        """Route collaboration using dynamic selection"""
+        content = message.content
+        requires_role = content.get("requires_role")
+
+        if requires_role:
+            return requires_role
+
+        topic = content.get("topic", "")
+        content_type = content.get("type", "")
+
+        topic_mapping = {
+            "technical": AgentRole.CTO,
+            "technology": AgentRole.CTO,
+            "development": AgentRole.RD,
+            "product": AgentRole.CPO,
+            "marketing": AgentRole.CMO,
+            "financial": AgentRole.CFO,
+            "hr": AgentRole.HR,
+            "strategy": AgentRole.CEO,
+            "operations": AgentRole.OPERATIONS,
+        }
+
+        combined = topic.lower() + " " + content_type.lower()
+        for key, role in topic_mapping.items():
+            if key in combined:
+                return role
+
+        return AgentRole.OPERATIONS
+
+    def _get_company_state(self) -> CompanyState:
+        from src.workflow.state_manager import CompanyState
+        from datetime import datetime
+
+        return {
+            "agents": {},
+            "tasks": {},
+            "messages": [],
+            "current_time": datetime.now(),
+            "strategic_goals": {},
+            "kpis": {},
+            "market_data": {},
+            "user_feedback": [],
+            "system_health": {},
+        }
