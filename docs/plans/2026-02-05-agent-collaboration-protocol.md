@@ -272,7 +272,7 @@ class MessageMetadata:
     correlation_id: Optional[str]       # 关联ID (用于请求-响应链)
     trace_id: str                       # 追踪ID (跨智能体追踪)
     sender: AgentRole                   # 发送者角色
-    recipients: List[AgentRole]         # 接收者列表 (点对点或广播)
+    Receivers: List[AgentRole]         # 接收者列表 (点对点或广播)
     message_type: MessageType           # 消息类型
     priority: Priority                  # 优先级
     timestamp: datetime                 # 发送时间
