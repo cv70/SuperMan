@@ -4,7 +4,35 @@
 
 SuperMan 是一个由多智能体组成的虚拟AI公司，完整模拟真实企业中的组织结构、职责分工与协作流程。每个智能体扮演一个专业岗位角色，具备独立决策能力、专业技能边界与跨角色协作协议，共同构成一个自我演进、闭环反馈的AI企业系统。该架构不仅可用于研究AI组织行为学，也为构建真实企业AI员工体系提供可落地的工程范式。
 
+### 🚀 技术亮点
+
+- **Go 语言实现**: 高性能、原生并发支持
+- **Mailbox 消息系统**: 自研异步消息队列，支持优先级、幂等性、超时控制
+- **Google ADK 集成**: 基于 Google Agent Development Kit 的AI智能体框架
+- **11个专业角色**: Chairman、CEO、CTO、CPO、CMO、CFO、HR、R&D、数据分析师、客户支持、运营专员
+
 ## 🧑‍💼 核心角色与职责
+
+### 0. Chairman（董事长）
+- **职责**：
+  - 公司最高决策者，代表董事会监督公司整体运营
+  - 审批重大战略决策、重大投资、并购、ipo等事项
+  - 监督CEO及其他高管团队的工作绩效
+  - 召集并主持董事会会议，向董事会报告公司重大事项
+  - 在公司治理中行使最终监督权，确保公司合规运营
+  - 协调董事会与管理层之间的沟通与协作
+- **能力**：
+  - 战略监督与重大决策审批
+  - 高管团队评估与任免建议
+  - 公司治理与合规风险管理
+  - 投资者关系与董事会协调
+  - 危机管理与战略方向把控
+- **协作方式**：
+  - 每月接收CEO的《经营状况报告》
+  - 每季度接收CFO的《财务状况报告》
+  - 每半年召开董事会会议，审议重大事项
+  - 在重大危机事件中直接下达指令， bypass 传统汇报链
+  - 对CEO的决策拥有最终否决权
 
 ### 1. CEO（首席执行官）
 - **职责**：
@@ -218,39 +246,167 @@ SuperMan 是一个由多智能体组成的虚拟AI公司，完整模拟真实企
   - 接收HR的“角色重组”指令并执行
   - 在系统升级时，协调所有智能体进入维护模式
 
+## 📬 Mailbox 消息系统
+
+SuperMan 采用自研的 **Mailbox** 异步消息队列系统作为智能体间的通信基础设施：
+
+### 核心特性
+
+| 特性 | 说明 |
+|------|------|
+| 🎯 **优先级队列** | 支持 Critical > High > Medium > Low 四级优先级 |
+| 🔄 **幂等性保证** | 自动去重，24小时窗口期内相同消息只处理一次 |
+| ⏱️ **超时控制** | 各优先级独立超时配置（5s/10s/30s/60s） |
+| 🛡️ **重试机制** | 指数退避策略，最多3次重试 |
+| 📊 **指标收集** | 实时统计消息吞吐量、延迟、成功率 |
+| 💀 **死信队列** | 可选SQLite持久化，存储处理失败的消息 |
+
+### 架构图
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Mailbox System                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐      │
+│  │ CEO Mailbox  │    │ CTO Mailbox  │    │ CPO Mailbox  │ ...  │
+│  │              │    │              │    │              │      │
+│  │ ┌──────────┐ │    │ ┌──────────┐ │    │ ┌──────────┐ │      │
+│  │ │ Priority │ │    │ │ Priority │ │    │ │ Priority │ │      │
+│  │ │ Queue    │ │    │ │ Queue    │ │    │ │ Queue    │ │      │
+│  │ └──────────┘ │    │ └──────────┘ │    │ └──────────┘ │      │
+│  │ ┌──────────┐ │    │ ┌──────────┐ │    │ ┌──────────┐ │      │
+│  │ │ Handler  │ │    │ │ Handler  │ │    │ │ Handler  │ │      │
+│  │ │ (Agent)  │ │    │ │ (Agent)  │ │    │ │ (Agent)  │ │      │
+│  │ └──────────┘ │    │ └──────────┘ │    │ └──────────┘ │      │
+│  └──────────────┘    └──────────────┘    └──────────────┘      │
+│           │                   │                   │             │
+│           └───────────────────┼───────────────────┘             │
+│                               │                                 │
+│                    ┌──────────┴──────────┐                     │
+│                    │   MailboxBus    │                     │
+│                    │  • 统一管理          │                     │
+│                    │  • 指标收集          │                     │
+│                    │  • 死信队列(DLQ)    │                     │
+│                    └─────────────────────┘                     │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 使用示例
+
+```go
+// 创建 Mailbox 管理器
+MailboxBus, _ := mailbox.NewMailboxBus(mailbox.DefaultMailboxBusConfig())
+
+// 为 Agent 注册消息处理器
+handler := func(msg *mailbox.Message) error {
+    fmt.Printf("[%s] Received: %s\n", msg.Receiver, msg.MessageID)
+    return nil
+}
+MailboxBus.RegisterMailbox(agents.AgentRoleCEO, handler)
+
+// 发送消息
+msg := mailbox.NewMessage(
+    agents.AgentRoleCTO,
+    agents.AgentRoleCEO,
+    agents.MessageTypeStatusReport,
+    map[string]interface{}{"progress": "80%"},
+)
+msg.WithPriority(agents.PriorityHigh)
+MailboxBus.Send(msg)
+```
+
 ## 🔄 协作流程（闭环系统）
 
 1. **战略制定**：CEO → 接收外部输入 → 制定季度目标 → 分发至 CTO/CPO/CMO/CFO
 2. **任务分解**：
-   - CTO → 拆解为技术任务 → 分配 R&D
-   - CPO → 拆解为产品需求 → 分配 R&D + 设计
-   - CMO → 拆解为营销活动 → 分配内容团队 + 渠道
-   - CFO → 制定预算 → 分配至各职能
+   - CTO → 拆解为技术任务 → 通过 **Mailbox** 分配 R&D
+   - CPO → 拆解为产品需求 → 通过 **Mailbox** 分配 R&D + 设计
+   - CMO → 拆解为营销活动 → 通过 **Mailbox** 分配内容团队 + 渠道
+   - CFO → 制定预算 → 通过 **Mailbox** 分配至各职能
 3. **执行与反馈**：
-   - 各角色执行任务 → 生成结构化报告 → 汇报上级
-   - 客户支持代理收集用户反馈 → 汇总至CPO
-   - 数据分析师收集全链路数据 → 生成周报 → 驱动CFO/CEO决策
+   - 各角色通过 **Mailbox** 接收任务 → 执行 → 发送状态报告
+   - 客户支持代理收集用户反馈 → 通过 **Mailbox** 汇总至CPO
+   - 数据分析师收集全链路数据 → 通过 **Mailbox** 生成周报 → 驱动CFO/CEO决策
 4. **持续优化**：
    - HR → 分析协作效率 → 动态调整角色分配
-   - 运营专员 → 优化任务流 → 触发自动化/熔断
+   - 运营专员 → 通过 **Mailbox** 优化任务流 → 触发自动化/熔断
    - CFO → 优化资源分配 → 控制成本
    - CEO → 综合评估 → 修订战略方向
 
-## 🚀 技术实现建议
+## 🚀 技术实现
 
-- **通信协议**：JSON-RPC / REST API（支持异步与事件驱动），支持gRPC用于高性能场景
-- **任务调度**：LangGraph（推荐）或 AutoGen（支持多智能体对话）或 Celery（支持异步队列）
-- **记忆系统**：Chroma / Qdrant（向量数据库）存储长期记忆，Redis缓存短期上下文
-- **权限控制**：RBAC + 操作审计日志（记录每个智能体的每一次调用与决策）
-- **监控**：Prometheus + Grafana（监控延迟、成功率、负载、API调用量）
-- **容错机制**：熔断（Circuit Breaker）、重试（Exponential Backoff）、降级（Fallback）、人工接管通道
-- **部署架构**：Docker容器化 + Kubernetes编排，支持水平扩展
-- **日志系统**：ELK Stack（Elasticsearch + Logstash + Kibana）集中管理所有日志
-- **测试体系**：单元测试（Pytest） + 集成测试（Playwright） + 模拟对抗测试（模拟恶意输入）
+### 核心架构
+
+| 组件 | 技术选型 | 说明 |
+|------|---------|------|
+| **编程语言** | Go 1.24+ | 高性能、原生并发支持 |
+| **智能体框架** | Google ADK | Google Agent Development Kit |
+| **消息系统** | Mailbox (自研) | 基于 Go Channel 的异步消息队列 |
+| **编排器** | Orchestrator | 集成 MailboxBus 的工作流编排 |
+| **状态管理** | StateManager | 内存状态管理 + 全局 CompanyState |
+
+### Mailbox 系统详解
+
+```
+消息生命周期：
+┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐
+│  Create │ → │  Send   │ → │ Enqueue │ → │ Process │ → │  Store  │
+└─────────┘    └─────────┘    └─────────┘    └─────────┘    └─────────┘
+     │              │              │              │              │
+     │         Inbox Chan    Priority      Handler       StateManager
+     │                        Queue      (Agent)
+     │
+NewMessage()  Mailbox.Send()  Queue.      Handler()    AddMessage()
+.WithPriority()               Enqueue()   ProcessMessage()
+.WithIdempotencyKey()                      │
+                                           ↓
+                                    ┌─────────────┐
+                                    │  Idempotency │
+                                    │   Checker   │
+                                    └─────────────┘
+```
+
+### 项目结构
+
+```
+superman/
+├── main.go                      # 程序入口
+├── go.mod / go.sum             # Go模块依赖
+├── agents/                      # 智能体定义
+│   ├── agents.go               # 角色、消息、任务、状态定义
+│   ├── agent_base.go           # BaseAgent接口和实现
+│   ├── ceo.go ~ operations.go  # 11个智能体实现
+│   └── chairman.go             # Chairman智能体实现
+├── mailbox/                     # Mailbox消息系统 ⭐核心组件
+│   ├── mailbox.go              # Mailbox核心实现
+│   ├── manager.go              # MailboxBus管理器
+│   ├── message.go              # 消息结构定义
+│   ├── priority_queue.go       # 优先级队列
+│   ├── idempotency.go          # 幂等性检查
+│   ├── dead_letter.go          # 死信队列(DLQ)
+│   ├── metrics.go              # 指标收集
+│   └── mailbox_test.go         # 单元测试
+├── workflow/                    # 工作流编排
+│   ├── orchestrator.go         # 编排器（集成Mailbox）
+│   ├── state_manager.go        # 状态管理
+│   └── message_router.go       # 消息路由
+├── config/                      # 配置管理
+└── utils/                       # 工具函数
+```
+
+### 扩展建议
+
+- **持久化**: 可添加 Redis/PostgreSQL 用于状态持久化
+- **监控**: 集成 Prometheus + Grafana 监控 Mailbox 指标
+- **日志**: 使用 ELK Stack 或 Loki 集中管理日志
+- **部署**: Docker 容器化 + Kubernetes 编排
+- **测试**: 使用 Go testing 框架 + 模拟对抗测试
 
 ## 📌 优势与价值
 
-- **可扩展性**：支持动态增减角色，适配从10人初创团队到1000人集团企业的AI化转型
+- **可扩展性**：支持动态增减角色，适配从11人初创团队到1000人集团企业的AI化转型
 - **可解释性**：所有决策、行为、数据流均可追溯、可审计、可复现，满足企业合规要求
 - **教育价值**：为AI组织行为学、人机协同、智能体社会学提供理想实验平台
 - **商业价值**：为企业提供“AI员工体系”的完整架构蓝图，降低AI落地成本，提升组织效率
