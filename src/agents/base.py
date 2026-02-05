@@ -37,10 +37,33 @@ class MessageType(Enum):
 class Priority(Enum):
     """优先级枚举"""
 
-    LOW = "low"  # 低优先级
-    MEDIUM = "medium"  # 中等优先级
-    HIGH = "high"  # 高优先级
-    CRITICAL = "critical"  # 紧急优先级
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class RetryStrategy(Enum):
+    FIXED = "fixed"
+    EXPONENTIAL_BACKOFF = "exponential_backoff"
+    LINEAR_BACKOFF = "linear_backoff"
+
+
+@dataclass
+class MessageMetadata:
+    message_id: str
+    correlation_id: Optional[str]
+    trace_id: str
+    sender: AgentRole
+    recipients: List[AgentRole]
+    message_type: MessageType
+    priority: Priority
+    timestamp: datetime
+    expires_at: Optional[datetime]
+    response_required: bool
+    max_retries: int
+    retry_strategy: RetryStrategy
+    metadata: Dict[str, Any]
 
 
 @dataclass
@@ -198,7 +221,7 @@ class BaseAgent(ABC):
 
     def get_role_hierarchy(self) -> int:
         """获取决策层级级别，用于公司内部权限和优先级比较
-        
+
         Returns:
             层级值，值越大优先级越高，用于决策冲突解决和消息路由
         """
