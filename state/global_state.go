@@ -11,32 +11,32 @@ import (
 // GlobalState 代表全局状态（公司级状态）
 type GlobalState struct {
 	mu                   sync.RWMutex
-	Agents               map[types.AgentRole]*AgentState `json:"agents"`
-	Tasks                map[string]*types.Task          `json:"tasks"`
-	Messages             []*types.Message                `json:"messages"`
-	CurrentTime          time.Time                       `json:"current_time"`
-	StrategicGoals       map[string]any                  `json:"strategic_goals"`
-	KPIs                 map[string]float64              `json:"kpis"`
-	MarketData           map[string]any                  `json:"market_data"`
-	UserFeedback         []map[string]any                `json:"user_feedback"`
-	SystemHealth         map[string]any                  `json:"system_health"`
-	BudgetAllocation     map[string]any                  `json:"budget_allocation"`
-	FinancialMetrics     map[string]any                  `json:"financial_metrics"`
-	CampaignMetrics      map[string]any                  `json:"campaign_metrics"`
-	ProductBacklog       []map[string]any                `json:"product_backlog"`
-	TechnicalDebt        []map[string]any                `json:"technical_debt"`
-	CampaignData         map[string]any                  `json:"campaign_data"`
-	BrandData            map[string]any                  `json:"brand_data"`
-	IndustryReports      map[string]any                  `json:"industry_reports"`
-	HistoricalCashflow   map[string]any                  `json:"historical_cashflow"`
-	CompetitorData       map[string]any                  `json:"competitor_data"`
-	CustomerData         map[string]any                  `json:"customer_data"`
-	ProductData          map[string]any                  `json:"product_data"`
-	BusinessMetrics      map[string]any                  `json:"business_metrics"`
-	HistoricalFinancials map[string]any                  `json:"historical_financials"`
-	Announcements        []string                        `json:"announcements"`
-	CompanyExecHistory   []*ExecutionHistory             `json:"company_exec_history"`
-	Version              int64                           `json:"version"`
+	Agents               map[string]*AgentState `json:"agents"`
+	Tasks                map[string]*types.Task `json:"tasks"`
+	Messages             []*types.Message       `json:"messages"`
+	CurrentTime          time.Time              `json:"current_time"`
+	StrategicGoals       map[string]any         `json:"strategic_goals"`
+	KPIs                 map[string]float64     `json:"kpis"`
+	MarketData           map[string]any         `json:"market_data"`
+	UserFeedback         []map[string]any       `json:"user_feedback"`
+	SystemHealth         map[string]any         `json:"system_health"`
+	BudgetAllocation     map[string]any         `json:"budget_allocation"`
+	FinancialMetrics     map[string]any         `json:"financial_metrics"`
+	CampaignMetrics      map[string]any         `json:"campaign_metrics"`
+	ProductBacklog       []map[string]any       `json:"product_backlog"`
+	TechnicalDebt        []map[string]any       `json:"technical_debt"`
+	CampaignData         map[string]any         `json:"campaign_data"`
+	BrandData            map[string]any         `json:"brand_data"`
+	IndustryReports      map[string]any         `json:"industry_reports"`
+	HistoricalCashflow   map[string]any         `json:"historical_cashflow"`
+	CompetitorData       map[string]any         `json:"competitor_data"`
+	CustomerData         map[string]any         `json:"customer_data"`
+	ProductData          map[string]any         `json:"product_data"`
+	BusinessMetrics      map[string]any         `json:"business_metrics"`
+	HistoricalFinancials map[string]any         `json:"historical_financials"`
+	Announcements        []string               `json:"announcements"`
+	CompanyExecHistory   []*ExecutionHistory    `json:"company_exec_history"`
+	Version              int64                  `json:"version"`
 }
 
 // ExecutionHistory 执行历史记录
@@ -58,7 +58,7 @@ type ExecutionHistory struct {
 // NewGlobalState 创建新的 GlobalState 实例
 func NewGlobalState() *GlobalState {
 	return &GlobalState{
-		Agents:               make(map[types.AgentRole]*AgentState),
+		Agents:               make(map[string]*AgentState),
 		Tasks:                make(map[string]*types.Task),
 		Messages:             make([]*types.Message, 0),
 		CurrentTime:          time.Now(),
@@ -89,58 +89,58 @@ func NewGlobalState() *GlobalState {
 // ==================== Agent State Management ====================
 
 // GetAgentState 获取智能体状态
-func (gs *GlobalState) GetAgentState(role types.AgentRole) *AgentState {
+func (gs *GlobalState) GetAgentState(name string) *AgentState {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
-	return gs.Agents[role]
+	return gs.Agents[name]
 }
 
 // SetAgentState 设置智能体状态
-func (gs *GlobalState) SetAgentState(role types.AgentRole, state *AgentState) {
+func (gs *GlobalState) SetAgentState(name string, state *AgentState) {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
-	gs.Agents[role] = state
+	gs.Agents[name] = state
 	gs.Version++
 }
 
 // GetAllAgentStates 获取所有智能体状态
-func (gs *GlobalState) GetAllAgentStates() map[types.AgentRole]*AgentState {
+func (gs *GlobalState) GetAllAgentStates() map[string]*AgentState {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
-	result := make(map[types.AgentRole]*AgentState)
-	for role, state := range gs.Agents {
-		result[role] = state
+	result := make(map[string]*AgentState)
+	for name, state := range gs.Agents {
+		result[name] = state
 	}
 	return result
 }
 
 // UpdateAgentState 更新智能体状态
-func (gs *GlobalState) UpdateAgentState(role types.AgentRole, updater func(*AgentState)) {
+func (gs *GlobalState) UpdateAgentState(name string, updater func(*AgentState)) {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
-	if agent, exists := gs.Agents[role]; exists {
+	if agent, exists := gs.Agents[name]; exists {
 		updater(agent)
 		gs.Version++
 	}
 }
 
 // DeleteAgentState 删除智能体状态
-func (gs *GlobalState) DeleteAgentState(role types.AgentRole) {
+func (gs *GlobalState) DeleteAgentState(name string) {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
-	delete(gs.Agents, role)
+	delete(gs.Agents, name)
 	gs.Version++
 }
 
 // CreateAgentState 创建新的智能体状态
-func (gs *GlobalState) CreateAgentState(role types.AgentRole, capabilities []string) *AgentState {
+func (gs *GlobalState) CreateAgentState(name string) *AgentState {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
-	state := NewAgentState(role, capabilities)
-	gs.Agents[role] = state
+	state := NewAgentState(name)
+	gs.Agents[name] = state
 	gs.Version++
 	return state
 }
@@ -214,7 +214,7 @@ func (gs *GlobalState) GetMessages() []*types.Message {
 }
 
 // GetMessagesByReceiver 根据接收者获取消息
-func (gs *GlobalState) GetMessagesByReceiver(receiver types.AgentRole) []*types.Message {
+func (gs *GlobalState) GetMessagesByReceiver(receiver string) []*types.Message {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
@@ -296,13 +296,13 @@ func (gs *GlobalState) GetExecutionHistory() []*ExecutionHistory {
 }
 
 // GetExecutionHistoryByAgent 获取指定智能体的执行历史
-func (gs *GlobalState) GetExecutionHistoryByAgent(role types.AgentRole) []*ExecutionHistory {
+func (gs *GlobalState) GetExecutionHistoryByAgent(name string) []*ExecutionHistory {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
 	var history []*ExecutionHistory
 	for _, h := range gs.CompanyExecHistory {
-		_ = role
+		_ = name
 		history = append(history, h)
 	}
 	return history
@@ -372,7 +372,7 @@ func (gs *GlobalState) ClearAll() {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
-	gs.Agents = make(map[types.AgentRole]*AgentState)
+	gs.Agents = make(map[string]*AgentState)
 	gs.Tasks = make(map[string]*types.Task)
 	gs.Messages = make([]*types.Message, 0)
 	gs.CurrentTime = time.Now()

@@ -6,8 +6,8 @@ type Task struct {
 	TaskID       string
 	Title        string
 	Description  string
-	AssignedTo   AgentRole
-	AssignedBy   AgentRole
+	AssignedTo   string
+	AssignedBy   string
 	Status       string
 	Dependencies []string
 	Deliverables []string

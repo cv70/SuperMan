@@ -10,9 +10,9 @@ import (
 
 func NewLLM(ctx context.Context, c *config.LLMConfig) (model.ToolCallingChatModel, error) {
 	model, err := qwen.NewChatModel(ctx, &qwen.ChatModelConfig{
-		Model: c.Model,
+		Model:   c.Model,
 		BaseURL: c.BaseURL,
-		APIKey: c.APIKey,
+		APIKey:  c.APIKey,
 	})
 	return model, err
 }

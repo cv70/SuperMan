@@ -7,16 +7,16 @@ import (
 
 // MailboxConfig Mailbox配置
 type MailboxConfig struct {
-	MailboxBus       *MailboxBus     // 所属的MailboxBus
-	Receiver         types.AgentRole // 接收者角色
-	InboxBufferSize  int             // 收件箱channel缓冲区大小
+	MailboxBus      *MailboxBus // 所属的MailboxBus
+	Receiver        string      // 接收者角色
+	InboxBufferSize int         // 收件箱channel缓冲区大小
 }
 
 // DefaultMailboxConfig 返回默认配置
-func DefaultMailboxConfig(receiver types.AgentRole) *MailboxConfig {
+func DefaultMailboxConfig(receiver string) *MailboxConfig {
 	return &MailboxConfig{
-		Receiver:         receiver,
-		InboxBufferSize:  1000,
+		Receiver:        receiver,
+		InboxBufferSize: 1000,
 	}
 }
 
@@ -26,7 +26,7 @@ type MessageHandler func(msg *types.Message) error
 // Mailbox Agent信箱
 type Mailbox struct {
 	bus      *MailboxBus
-	receiver types.AgentRole
+	receiver string
 	inbox    chan *types.Message // 收件箱
 	archive  []*types.Message    // 消息归档
 	mu       sync.RWMutex
@@ -82,6 +82,11 @@ func (mb *Mailbox) ArchiveMessage(msg *types.Message) {
 	}
 }
 
+// GetMailboxBus 获取信箱总线
+func (mb *Mailbox) GetMailboxBus() *MailboxBus {
+	return mb.bus
+}
+
 // GetInboxCount 获取收件箱消息数量
 func (mb *Mailbox) GetInboxCount() int {
 	return len(mb.inbox)
@@ -102,7 +107,7 @@ func (mb *Mailbox) GetMailboxStats() map[string]interface{} {
 	return map[string]interface{}{
 		"inbox_count":   len(mb.inbox),
 		"archive_count": len(mb.archive),
-		"receiver":      mb.receiver.String(),
+		"receiver":      mb.receiver,
 		"buffer_size":   cap(mb.inbox),
 	}
 }

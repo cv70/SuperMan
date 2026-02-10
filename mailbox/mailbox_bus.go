@@ -11,7 +11,7 @@ import (
 // MailboxBus 信箱总线
 type MailboxBus struct {
 	mu          sync.RWMutex
-	mailboxes   map[types.AgentRole]*Mailbox
+	mailboxes   map[string]*Mailbox
 	globalState *state.GlobalState // 全局共享状态
 }
 
@@ -39,7 +39,7 @@ func NewMailboxBusWithConfig(config *MailboxBusConfig) *MailboxBus {
 	}
 
 	b := &MailboxBus{
-		mailboxes:   make(map[types.AgentRole]*Mailbox),
+		mailboxes:   make(map[string]*Mailbox),
 		globalState: state.NewGlobalState(),
 	}
 
@@ -47,27 +47,28 @@ func NewMailboxBusWithConfig(config *MailboxBusConfig) *MailboxBus {
 }
 
 // RegisterMailbox 注册Mailbox
-func (b *MailboxBus) RegisterMailbox(role types.AgentRole, mailbox *Mailbox) error {
+func (b *MailboxBus) RegisterMailbox(name string, mailbox *Mailbox) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	if _, exists := b.mailboxes[role]; exists {
-		return fmt.Errorf("mailbox for role %s already exists", role)
+	if _, exists := b.mailboxes[name]; exists {
+		return fmt.Errorf("mailbox for name %s already exists", name)
 	}
 
-	b.mailboxes[role] = mailbox
+	b.mailboxes[name] = mailbox
+	mailbox.bus = b
 
 	return nil
 }
 
 // GetMailbox 获取Mailbox
-func (b *MailboxBus) GetMailbox(role types.AgentRole) (*Mailbox, error) {
+func (b *MailboxBus) GetMailbox(name string) (*Mailbox, error) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
-	m, exists := b.mailboxes[role]
+	m, exists := b.mailboxes[name]
 	if !exists {
-		return nil, fmt.Errorf("mailbox for role %s not found", role)
+		return nil, fmt.Errorf("mailbox for name %s not found", name)
 	}
 
 	return m, nil
@@ -89,12 +90,13 @@ func (b *MailboxBus) Send(msg *types.Message) error {
 }
 
 // SendTo 发送消息到指定角色
-func (b *MailboxBus) SendTo(sender, receiver types.AgentRole, msgType types.MessageType, content map[string]interface{}) error {
-	msg, err := types.NewMessage(sender, receiver, msgType, content)
-	if err != nil {
-		return err
-	}
-	return b.Send(msg)
+func (b *MailboxBus) SendTo(sender, receiver string, content map[string]interface{}) error {
+	body := fmt.Sprintf("%v", content)
+	return b.Send(&types.Message{
+		Sender:   sender,
+		Receiver: receiver,
+		Body:     body,
+	})
 }
 
 // GetGlobalState 获取全局共享状态

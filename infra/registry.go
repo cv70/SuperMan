@@ -9,8 +9,8 @@ import (
 )
 
 type Registry struct {
-	DB            *gorm.DB
-	LLM           map[string]model.ToolCallingChatModel
+	DB  *gorm.DB
+	LLM map[string]model.ToolCallingChatModel
 }
 
 func NewRegistry(ctx context.Context, c *config.Config) (*Registry, error) {

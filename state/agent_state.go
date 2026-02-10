@@ -23,39 +23,35 @@ type AgentExecutionHistory struct {
 
 // AgentState 代表单个智能体的状态
 type AgentState struct {
-	Role               types.AgentRole          `json:"role"`
+	Name               string                   `json:"name"`
 	CurrentTasks       []*types.Task            `json:"current_tasks"`
 	CompletedTasks     []*types.Task            `json:"completed_tasks"`
 	Messages           []*types.Message         `json:"messages"`
 	PerformanceMetrics map[string]float64       `json:"performance_metrics"`
-	Capabilities       []string                 `json:"capabilities"`
 	Workload           float64                  `json:"workload"`
 	LastActive         time.Time                `json:"last_active"`
-	NAME               string                   `json:"name"`
 	ExecutionHistory   []*AgentExecutionHistory `json:"execution_history"`
 }
 
 // NewAgentState 创建新的 AgentState 实例
-func NewAgentState(role types.AgentRole, capabilities []string) *AgentState {
+func NewAgentState(name string) *AgentState {
 	return &AgentState{
-		Role:               role,
+		Name:               name,
 		CurrentTasks:       make([]*types.Task, 0),
 		CompletedTasks:     make([]*types.Task, 0),
 		Messages:           make([]*types.Message, 0),
 		PerformanceMetrics: make(map[string]float64),
-		Capabilities:       capabilities,
 		Workload:           0,
 		LastActive:         time.Now(),
-		NAME:               role.String(),
 		ExecutionHistory:   make([]*AgentExecutionHistory, 0),
 	}
 }
 
 // ==================== Getters ====================
 
-// GetRole 获取智能体角色
-func (s *AgentState) GetRole() types.AgentRole {
-	return s.Role
+// GetName 获取智能体名称
+func (s *AgentState) GetName() string {
+	return s.Name
 }
 
 // GetCurrentTasks 获取当前任务列表
@@ -78,11 +74,6 @@ func (s *AgentState) GetPerformanceMetrics() map[string]float64 {
 	return s.PerformanceMetrics
 }
 
-// GetCapabilities 获取能力列表
-func (s *AgentState) GetCapabilities() []string {
-	return s.Capabilities
-}
-
 // GetWorkload 获取工作负载
 func (s *AgentState) GetWorkload() float64 {
 	return s.Workload
@@ -91,11 +82,6 @@ func (s *AgentState) GetWorkload() float64 {
 // GetLastActive 获取最后活跃时间
 func (s *AgentState) GetLastActive() time.Time {
 	return s.LastActive
-}
-
-// GetName 获取智能体名称
-func (s *AgentState) GetName() string {
-	return s.NAME
 }
 
 // GetExecutionHistory 获取执行历史
@@ -152,12 +138,6 @@ func (s *AgentState) GetRecentExecutions(count int) []*AgentExecutionHistory {
 }
 
 // ==================== Setters ====================
-
-// SetName 设置智能体名称
-func (s *AgentState) SetName(name string) {
-	s.NAME = name
-}
-
 // SetLastActive 设置最后活跃时间
 func (s *AgentState) SetLastActive(t time.Time) {
 	s.LastActive = t

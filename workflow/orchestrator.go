@@ -9,36 +9,36 @@ import (
 )
 
 type Orchestrator interface {
-	RegisterAgent(role types.AgentRole, agent agents.Agent)
-	GetAgent(role types.AgentRole) agents.Agent
+	RegisterAgent(agent agents.Agent)
+	GetAgent(name string) agents.Agent
 	GetAllAgents() []agents.Agent
 	RunTask(task *types.Task) error
 	SendMessage(msg *types.Message) error
-	SendMessageTo(sender, receiver types.AgentRole, msgType types.MessageType, content map[string]interface{}) error
+	SendMessageTo(sender, receiver string, content map[string]interface{}) error
 	GetMailboxBus() *mailbox.MailboxBus
 }
 
 type orchestratorImpl struct {
-	agents        map[types.AgentRole]agents.Agent
-	MailboxBus    *mailbox.MailboxBus
+	agents     map[string]agents.Agent
+	MailboxBus *mailbox.MailboxBus
 }
 
 func NewOrchestrator(MailboxBus *mailbox.MailboxBus) Orchestrator {
 	return &orchestratorImpl{
-		agents:        make(map[types.AgentRole]agents.Agent),
-		MailboxBus:    MailboxBus,
+		agents:     make(map[string]agents.Agent),
+		MailboxBus: MailboxBus,
 	}
 }
 
-func (o *orchestratorImpl) RegisterAgent(role types.AgentRole, agent agents.Agent) {
-	o.agents[role] = agent
+func (o *orchestratorImpl) RegisterAgent(agent agents.Agent) {
+	o.agents[agent.GetName()] = agent
 }
 
-func (o *orchestratorImpl) GetAgent(role types.AgentRole) agents.Agent {
-	return o.agents[role]
+func (o *orchestratorImpl) GetAgent(name string) agents.Agent {
+	return o.agents[name]
 }
 
-func (o *orchestratorImpl) GetAllAgents() []agents.Agent{
+func (o *orchestratorImpl) GetAllAgents() []agents.Agent {
 	result := make([]agents.Agent, 0, len(o.agents))
 	for _, agent := range o.agents {
 		result = append(result, agent)
@@ -67,7 +67,6 @@ func (o *orchestratorImpl) RunTask(task *types.Task) error {
 		if err := o.MailboxBus.SendTo(
 			task.AssignedBy,
 			receiver,
-			types.MessageTypeTaskAssignment,
 			content,
 		); err != nil {
 			return fmt.Errorf("failed to send task via mailbox: %w", err)
@@ -79,12 +78,7 @@ func (o *orchestratorImpl) RunTask(task *types.Task) error {
 
 // SendMessage 通过mailbox发送消息
 func (o *orchestratorImpl) SendMessage(msg *types.Message) error {
-	msg, err := types.NewMessage(
-		msg.Sender,
-		msg.Receiver,
-		msg.MessageType,
-		convertContent(msg.Content),
-	)
+	msg, err := types.NewMessage(msg.Sender, msg.Receiver, msg.Body)
 	if err != nil {
 		return err
 	}
@@ -93,11 +87,10 @@ func (o *orchestratorImpl) SendMessage(msg *types.Message) error {
 }
 
 // SendMessageTo 发送消息到指定角色
-func (o *orchestratorImpl) SendMessageTo(sender, receiver types.AgentRole, msgType types.MessageType, content map[string]interface{}) error {
+func (o *orchestratorImpl) SendMessageTo(sender, receiver string, content map[string]interface{}) error {
 	return o.MailboxBus.SendTo(
 		sender,
 		receiver,
-		msgType,
 		content,
 	)
 }
