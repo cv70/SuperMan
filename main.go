@@ -12,6 +12,7 @@ import (
 	"superman/config"
 	"superman/infra"
 	"superman/mailbox"
+	"superman/scheduler"
 	"superman/types"
 	"superman/workflow"
 
@@ -34,9 +35,11 @@ func main() {
 
 	orchestrator := workflow.NewOrchestrator(mailboxBus)
 
+	schedulerInstance := scheduler.NewAutoScheduler()
+	taskGenerator := scheduler.NewDefaultTaskGenerator()
+
 	fmt.Println("\n正在创建AI智能体...")
 
-	// Create all agents with error handling
 	agentMap := make(map[string]agents.Agent)
 	for _, agentConfig := range config.AppConfig.Agents {
 		agent, err := agents.NewBaseAgent(ctx, r.LLM[agentConfig.Model], agentConfig, config.AppConfig.Agents...)
@@ -47,17 +50,28 @@ func main() {
 		mailboxBus.RegisterMailbox(agent.GetName(), mailbox)
 		mistake.Unwrap(err)
 
-		// 将全局状态注入到每个agent
 		agent.SetGlobalState(mailboxBus.GetGlobalState())
 		agentMap[agent.GetName()] = agent
+
 		err = agent.Start()
 		mistake.Unwrap(err)
+
+		schedulerInstance.AddAgent(agentConfig.Name, 3)
+
+		tasks, err := taskGenerator.GenerateTasks(ctx, agent)
+		if err != nil {
+			slog.Error("failed to generate tasks", slog.String("agent", agentConfig.Name), slog.Any("error", err))
+		} else {
+			for _, task := range tasks {
+				schedulerInstance.AddTask(task, scheduler.PriorityMedium)
+			}
+		}
 	}
 
 	fmt.Println("\n=== 系统初始化完成 ===")
 	fmt.Printf("智能体总数: %d\n", len(agentMap))
+	fmt.Printf("任务队列长度: %d\n", schedulerInstance.GetQueueLength())
 
-	// 启动交互式控制台
 	fmt.Println("\n=== 启动交互式控制台 ===")
 	fmt.Println("命令说明:")
 	fmt.Println("  send <message> - 向Chairman发送消息")
@@ -65,7 +79,6 @@ func main() {
 	fmt.Println("  exit           - 退出程序")
 	fmt.Println()
 
-	// 读取用户输入
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Print("> ")
@@ -80,49 +93,48 @@ func main() {
 			continue
 		}
 
-		processInput(agentMap, mailboxBus, input)
+		processInput(agentMap, mailboxBus, schedulerInstance, input)
 	}
 }
 
-func processInput(agentMap map[string]agents.Agent, mailboxBus *mailbox.MailboxBus, input string) {
-		parts := strings.Fields(input)
-		if len(parts) == 0 {
+func processInput(agentMap map[string]agents.Agent, mailboxBus *mailbox.MailboxBus, schedulerInstance *scheduler.AutoScheduler, input string) {
+	parts := strings.Fields(input)
+	if len(parts) == 0 {
+		return
+	}
+	defer fmt.Println()
+
+	command := parts[0]
+
+	switch command {
+	case "send":
+		message := strings.Join(parts[1:], " ")
+		msg, err := types.NewMessage(
+			"user",
+			"chairman",
+			message,
+		)
+		if err != nil {
+			slog.Error("failed to create message", slog.Any("e", err))
 			return
 		}
-		defer fmt.Println()
-
-		command := parts[0]
-
-		switch command {
-		case "send":
-			// 发送消息到Chairman
-			message := strings.Join(parts[1:], " ")
-			msg, err := types.NewMessage(
-				"user",
-				"chairman",
-				message,
-			)
-			if err != nil {
-				slog.Error("failed to create message", slog.Any("e", err))
-				return
-			}
-			err = mailboxBus.Send(msg)
-			if err != nil {
-				slog.Error("failed to send message", slog.Any("e", err))
-			}
-		case "status":
-			// 显示系统状态
-			fmt.Println("\n--- 系统状态 ---")
-			for name, agent := range agentMap {
-				fmt.Printf("%s (工作负载: %.2f)\n", name, agent.GetWorkload())
-			}
-
-		case "exit":
-			os.Exit(0)
-
-		default:
-			fmt.Printf("未知命令: %s\n", command)
-			fmt.Println("可用命令: send, status, exit")
+		err = mailboxBus.Send(msg)
+		if err != nil {
+			slog.Error("failed to send message", slog.Any("e", err))
 		}
-	
+	case "status":
+		fmt.Println("\n--- 系统状态 ---")
+		fmt.Printf("调度器任务队列长度: %d\n", schedulerInstance.GetQueueLength())
+		for _, priority := range []string{scheduler.PriorityCritical, scheduler.PriorityHigh, scheduler.PriorityMedium, scheduler.PriorityLow} {
+			fmt.Printf("  [%s] 长度: %d\n", priority, schedulerInstance.GetQueueLengthByPriority(priority))
+		}
+		for name, agent := range agentMap {
+			fmt.Printf("%s (工作负载: %.2f)\n", name, agent.GetWorkload())
+		}
+	case "exit":
+		os.Exit(0)
+	default:
+		fmt.Printf("未知命令: %s\n", command)
+		fmt.Println("可用命令: send, status, exit")
+	}
 }
