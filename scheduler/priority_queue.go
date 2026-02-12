@@ -1,19 +1,10 @@
 package scheduler
 
 import (
+	"superman/ds"
 	"sync"
 	"time"
 )
-
-type Task struct {
-	ID         string
-	Title      string
-	AssignedTo string
-	Status     string
-	Priority   string
-	CreatedAt  time.Time
-	Metadata   map[string]any
-}
 
 const (
 	PriorityCritical = "Critical"
@@ -31,26 +22,26 @@ var PriorityValue = map[string]int{
 
 type TaskQueue struct {
 	mu       sync.Mutex
-	queue    []*Task
+	queue    []*ds.Task
 	lastTime map[string]time.Time
 }
 
 func NewTaskQueue() *TaskQueue {
 	return &TaskQueue{
-		queue:    make([]*Task, 0),
+		queue:    make([]*ds.Task, 0),
 		lastTime: make(map[string]time.Time),
 	}
 }
 
-func (q *TaskQueue) Enqueue(task *Task) {
+func (q *TaskQueue) Enqueue(task *ds.Task) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	q.queue = append(q.queue, task)
-	q.lastTime[task.Priority] = time.Now()
+	q.lastTime[string(task.Priority)] = time.Now()
 }
 
-func (q *TaskQueue) Dequeue() *Task {
+func (q *TaskQueue) Dequeue() *ds.Task {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -65,7 +56,7 @@ func (q *TaskQueue) Dequeue() *Task {
 	return task
 }
 
-func (q *TaskQueue) Peek() *Task {
+func (q *TaskQueue) Peek() *ds.Task {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -89,12 +80,12 @@ func (q *TaskQueue) IsEmpty() bool {
 	return len(q.queue) == 0
 }
 
-func (q *TaskQueue) GetByPriority(priority string) *Task {
+func (q *TaskQueue) GetByPriority(priority string) *ds.Task {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	for i, task := range q.queue {
-		if task.Priority == priority {
+		if string(task.Priority) == priority {
 			q.queue = append(q.queue[:i], q.queue[i+1:]...)
 			q.lastTime[priority] = time.Now()
 			return task
@@ -107,8 +98,8 @@ func (q *TaskQueue) GetByPriority(priority string) *Task {
 func (q *TaskQueue) sortByPriority() {
 	for i := 0; i < len(q.queue); i++ {
 		for j := i + 1; j < len(q.queue); j++ {
-			priI := PriorityValue[q.queue[i].Priority]
-			priJ := PriorityValue[q.queue[j].Priority]
+			priI := PriorityValue[string(q.queue[i].Priority)]
+			priJ := PriorityValue[string(q.queue[j].Priority)]
 			if priI > priJ {
 				q.queue[i], q.queue[j] = q.queue[j], q.queue[i]
 			}

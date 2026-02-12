@@ -2,22 +2,15 @@ package scheduler
 
 import (
 	"sync"
-	"time"
 
-	"superman/types"
+	"superman/ds"
+	"superman/state"
 )
 
 type AutoScheduler struct {
 	mu          sync.RWMutex
 	taskQueues  map[string]*TaskQueue
-	agentStates map[string]*AgentState
-}
-
-type AgentState struct {
-	Name         string
-	CurrentTasks int
-	MaxTasks     int
-	LastActive   time.Time
+	agentStates map[string]*state.AgentState
 }
 
 func NewAutoScheduler() *AutoScheduler {
@@ -28,52 +21,29 @@ func NewAutoScheduler() *AutoScheduler {
 			PriorityMedium:   NewTaskQueue(),
 			PriorityLow:      NewTaskQueue(),
 		},
-		agentStates: make(map[string]*AgentState),
+		agentStates: make(map[string]*state.AgentState),
 	}
 }
 
-func (s *AutoScheduler) AddTask(task *types.Task, priority string) {
+func (s *AutoScheduler) AddTask(task *ds.Task, priority string) {
 	queue := s.taskQueues[priority]
 	if queue == nil {
 		queue = NewTaskQueue()
 		s.taskQueues[priority] = queue
 	}
 
-	metaPriority := PriorityLow
-	if task.Metadata != nil {
-		if p, ok := task.Metadata["priority"]; ok {
-			if str, ok := p.(string); ok {
-				metaPriority = str
-			}
-		}
-	}
-
-	queue.Enqueue(&Task{
-		ID:         task.TaskID,
-		Title:      task.Title,
-		AssignedTo: task.AssignedTo,
-		Status:     task.Status,
-		Priority:   metaPriority,
-		CreatedAt:  task.CreatedAt,
-		Metadata:   task.Metadata,
-	})
+	// 直接使用 ds.Task，不需要转换
+	queue.Enqueue(task)
 }
 
-func (s *AutoScheduler) GetTask() *types.Task {
+func (s *AutoScheduler) GetTask() *ds.Task {
 	priorities := []string{PriorityCritical, PriorityHigh, PriorityMedium, PriorityLow}
 	for _, priority := range priorities {
 		queue := s.taskQueues[priority]
 		if queue != nil && !queue.IsEmpty() {
 			task := queue.Dequeue()
 			if task != nil {
-				return &types.Task{
-					TaskID:      task.ID,
-					Title:       task.Title,
-					AssignedTo:  task.AssignedTo,
-					Status:      task.Status,
-					Metadata:    task.Metadata,
-					CreatedAt:   task.CreatedAt,
-				}
+				return task
 			}
 		}
 	}
@@ -83,26 +53,29 @@ func (s *AutoScheduler) GetTask() *types.Task {
 func (s *AutoScheduler) AddAgent(agentName string, maxTasks int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.agentStates[agentName] = &AgentState{
-		Name:       agentName,
-		MaxTasks:   maxTasks,
-		LastActive: time.Now(),
-	}
+	s.agentStates[agentName] = state.NewAgentState(agentName)
+	s.agentStates[agentName].SetMaxTasks(maxTasks)
 }
 
 func (s *AutoScheduler) UpdateAgentTaskCount(agentName string, count int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if state, exists := s.agentStates[agentName]; exists {
-		state.CurrentTasks = count
+	if agentState, exists := s.agentStates[agentName]; exists {
+		for len(agentState.GetCurrentTasks()) > count {
+			// 移除多余的任務
+			tasks := agentState.GetCurrentTasks()
+			if len(tasks) > 0 {
+				agentState.CompleteTask(tasks[0])
+			}
+		}
 	}
 }
 
 func (s *AutoScheduler) GetAgentTaskCount(agentName string) int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if state, exists := s.agentStates[agentName]; exists {
-		return state.CurrentTasks
+	if agentState, exists := s.agentStates[agentName]; exists {
+		return len(agentState.GetCurrentTasks())
 	}
 	return 0
 }
@@ -110,8 +83,8 @@ func (s *AutoScheduler) GetAgentTaskCount(agentName string) int {
 func (s *AutoScheduler) GetAgentMaxTasks(agentName string) int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if state, exists := s.agentStates[agentName]; exists {
-		return state.MaxTasks
+	if agentState, exists := s.agentStates[agentName]; exists {
+		return agentState.GetMaxTasks()
 	}
 	return 3
 }

@@ -1,7 +1,7 @@
 package state
 
 import (
-	"superman/types"
+	"superman/ds"
 	"time"
 )
 
@@ -24,27 +24,39 @@ type AgentExecutionHistory struct {
 // AgentState 代表单个智能体的状态
 type AgentState struct {
 	Name               string                   `json:"name"`
-	CurrentTasks       []*types.Task            `json:"current_tasks"`
-	CompletedTasks     []*types.Task            `json:"completed_tasks"`
-	Messages           []*types.Message         `json:"messages"`
+	CurrentTasks       []*ds.Task               `json:"current_tasks"`
+	CompletedTasks     []*ds.Task               `json:"completed_tasks"`
+	Messages           []*ds.Message            `json:"messages"`
 	PerformanceMetrics map[string]float64       `json:"performance_metrics"`
 	Workload           float64                  `json:"workload"`
 	LastActive         time.Time                `json:"last_active"`
 	ExecutionHistory   []*AgentExecutionHistory `json:"execution_history"`
+	MaxTasks           int                      `json:"max_tasks"`
 }
 
 // NewAgentState 创建新的 AgentState 实例
 func NewAgentState(name string) *AgentState {
 	return &AgentState{
 		Name:               name,
-		CurrentTasks:       make([]*types.Task, 0),
-		CompletedTasks:     make([]*types.Task, 0),
-		Messages:           make([]*types.Message, 0),
+		CurrentTasks:       make([]*ds.Task, 0),
+		CompletedTasks:     make([]*ds.Task, 0),
+		Messages:           make([]*ds.Message, 0),
 		PerformanceMetrics: make(map[string]float64),
 		Workload:           0,
 		LastActive:         time.Now(),
 		ExecutionHistory:   make([]*AgentExecutionHistory, 0),
+		MaxTasks:           3,
 	}
+}
+
+// GetMaxTasks 获取最大任务数
+func (s *AgentState) GetMaxTasks() int {
+	return s.MaxTasks
+}
+
+// SetMaxTasks 设置最大任务数
+func (s *AgentState) SetMaxTasks(maxTasks int) {
+	s.MaxTasks = maxTasks
 }
 
 // ==================== Getters ====================
@@ -55,17 +67,17 @@ func (s *AgentState) GetName() string {
 }
 
 // GetCurrentTasks 获取当前任务列表
-func (s *AgentState) GetCurrentTasks() []*types.Task {
+func (s *AgentState) GetCurrentTasks() []*ds.Task {
 	return s.CurrentTasks
 }
 
 // GetCompletedTasks 获取已完成任务列表
-func (s *AgentState) GetCompletedTasks() []*types.Task {
+func (s *AgentState) GetCompletedTasks() []*ds.Task {
 	return s.CompletedTasks
 }
 
 // GetMessages 获取消息历史
-func (s *AgentState) GetMessages() []*types.Message {
+func (s *AgentState) GetMessages() []*ds.Message {
 	return s.Messages
 }
 
@@ -146,16 +158,16 @@ func (s *AgentState) SetLastActive(t time.Time) {
 // ==================== State Update Methods ====================
 
 // AddTask 添加任务到当前任务列表
-func (s *AgentState) AddTask(task *types.Task) {
+func (s *AgentState) AddTask(task *ds.Task) {
 	s.CurrentTasks = append(s.CurrentTasks, task)
 	s.Workload = float64(len(s.CurrentTasks))
 	s.LastActive = time.Now()
 }
 
 // CompleteTask 完成任务，从当前任务移动到完成列表
-func (s *AgentState) CompleteTask(task *types.Task) {
+func (s *AgentState) CompleteTask(task *ds.Task) {
 	for i, t := range s.CurrentTasks {
-		if t.TaskID == task.TaskID {
+		if t.ID == task.ID {
 			// 从当前任务移除
 			s.CurrentTasks = append(s.CurrentTasks[:i], s.CurrentTasks[i+1:]...)
 			// 添加到完成任务
@@ -168,7 +180,7 @@ func (s *AgentState) CompleteTask(task *types.Task) {
 }
 
 // AddMessage 添加消息到消息历史
-func (s *AgentState) AddMessage(msg *types.Message) {
+func (s *AgentState) AddMessage(msg *ds.Message) {
 	s.Messages = append(s.Messages, msg)
 	s.LastActive = time.Now()
 }
@@ -202,16 +214,16 @@ func (s *AgentState) GetPerformance() map[string]float64 {
 }
 
 // GetTaskByID 根据 ID 获取任务
-func (s *AgentState) GetTaskByID(taskID string) *types.Task {
+func (s *AgentState) GetTaskByID(taskID string) *ds.Task {
 	// 先搜索当前任务
 	for _, t := range s.CurrentTasks {
-		if t.TaskID == taskID {
+		if t.ID == taskID {
 			return t
 		}
 	}
 	// 再搜索完成任务
 	for _, t := range s.CompletedTasks {
-		if t.TaskID == taskID {
+		if t.ID == taskID {
 			return t
 		}
 	}
@@ -225,18 +237,18 @@ func (s *AgentState) HasTask(taskID string) bool {
 
 // ClearCompleted 清空已完成任务列表
 func (s *AgentState) ClearCompleted() {
-	s.CompletedTasks = make([]*types.Task, 0)
+	s.CompletedTasks = make([]*ds.Task, 0)
 }
 
 // ClearCurrent 清空当前任务列表
 func (s *AgentState) ClearCurrent() {
-	s.CurrentTasks = make([]*types.Task, 0)
+	s.CurrentTasks = make([]*ds.Task, 0)
 	s.Workload = 0
 }
 
 // ClearAll 清空所有任务
 func (s *AgentState) ClearAll() {
-	s.CurrentTasks = make([]*types.Task, 0)
-	s.CompletedTasks = make([]*types.Task, 0)
+	s.CurrentTasks = make([]*ds.Task, 0)
+	s.CompletedTasks = make([]*ds.Task, 0)
 	s.Workload = 0
 }

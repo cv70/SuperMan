@@ -1,7 +1,7 @@
 package mailbox
 
 import (
-	"superman/types"
+	"superman/ds"
 	"sync"
 )
 
@@ -21,14 +21,14 @@ func DefaultMailboxConfig(receiver string) *MailboxConfig {
 }
 
 // MessageHandler 消息处理函数类型
-type MessageHandler func(msg *types.Message) error
+type MessageHandler func(msg *ds.Message) error
 
 // Mailbox Agent信箱
 type Mailbox struct {
 	bus      *MailboxBus
 	receiver string
-	Inbox    chan *types.Message // 收件箱（导出字段）
-	archive  []*types.Message    // 消息归档
+	Inbox    chan *ds.Message // 收件箱（导出字段）
+	archive  []*ds.Message    // 消息归档
 	mu       sync.RWMutex
 }
 
@@ -37,41 +37,30 @@ func NewMailbox(config *MailboxConfig) *Mailbox {
 	mb := &Mailbox{
 		bus:      config.MailboxBus,
 		receiver: config.Receiver,
-		Inbox:    make(chan *types.Message, config.InboxBufferSize),
-		archive:  make([]*types.Message, 0),
+		Inbox:    make(chan *ds.Message, config.InboxBufferSize),
+		archive:  make([]*ds.Message, 0),
 	}
 
 	return mb
 }
 
-// Send 发送消息到Mailbox（外部调用）
-func (mb *Mailbox) Send(msg *types.Message) {
-	// 投递到inbox
+// PushInbox 向收件箱推送消息
+func (mb *Mailbox) PushInbox(msg *ds.Message) {
 	mb.Inbox <- msg
 }
 
-// PushInbox 向收件箱推送消息（内部使用）
-func (mb *Mailbox) PushInbox(msg *types.Message) bool {
-	select {
-	case mb.Inbox <- msg:
-		return true
-	default:
-		return false // 信箱已满
-	}
-}
-
 // PopInbox 从收件箱取出消息
-func (mb *Mailbox) PopInbox() *types.Message {
+func (mb *Mailbox) PopInbox() *ds.Message {
 	return <-mb.Inbox
 }
 
 // PushOutbox 向发件箱推送消息
-func (mb *Mailbox) PushOutbox(msg *types.Message) error {
+func (mb *Mailbox) PushOutbox(msg *ds.Message) error {
 	return mb.bus.Send(msg)
 }
 
 // ArchiveMessage 归档消息
-func (mb *Mailbox) ArchiveMessage(msg *types.Message) {
+func (mb *Mailbox) ArchiveMessage(msg *ds.Message) {
 	mb.mu.Lock()
 	defer mb.mu.Unlock()
 	mb.archive = append(mb.archive, msg)

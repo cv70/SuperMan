@@ -2,18 +2,17 @@ package state
 
 import (
 	"fmt"
+	"superman/ds"
 	"sync"
 	"time"
-
-	"superman/types"
 )
 
 // GlobalState 代表全局状态（公司级状态）
 type GlobalState struct {
 	mu                   sync.RWMutex
 	Agents               map[string]*AgentState `json:"agents"`
-	Tasks                map[string]*types.Task `json:"tasks"`
-	Messages             []*types.Message       `json:"messages"`
+	Tasks                map[string]*ds.Task    `json:"tasks"`
+	Messages             []*ds.Message          `json:"messages"`
 	CurrentTime          time.Time              `json:"current_time"`
 	StrategicGoals       map[string]any         `json:"strategic_goals"`
 	KPIs                 map[string]float64     `json:"kpis"`
@@ -59,8 +58,8 @@ type ExecutionHistory struct {
 func NewGlobalState() *GlobalState {
 	return &GlobalState{
 		Agents:               make(map[string]*AgentState),
-		Tasks:                make(map[string]*types.Task),
-		Messages:             make([]*types.Message, 0),
+		Tasks:                make(map[string]*ds.Task),
+		Messages:             make([]*ds.Message, 0),
 		CurrentTime:          time.Now(),
 		StrategicGoals:       make(map[string]any),
 		KPIs:                 make(map[string]float64),
@@ -148,26 +147,26 @@ func (gs *GlobalState) CreateAgentState(name string) *AgentState {
 // ==================== Task Management ====================
 
 // AddTask 添加任务
-func (gs *GlobalState) AddTask(task *types.Task) {
+func (gs *GlobalState) AddTask(task *ds.Task) {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
-	gs.Tasks[task.TaskID] = task
+	gs.Tasks[task.ID] = task
 	gs.Version++
 }
 
 // GetTask 获取任务
-func (gs *GlobalState) GetTask(taskID string) *types.Task {
+func (gs *GlobalState) GetTask(taskID string) *ds.Task {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 	return gs.Tasks[taskID]
 }
 
 // GetAllTasks 获取所有任务
-func (gs *GlobalState) GetAllTasks() map[string]*types.Task {
+func (gs *GlobalState) GetAllTasks() map[string]*ds.Task {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
-	result := make(map[string]*types.Task)
+	result := make(map[string]*ds.Task)
 	for k, v := range gs.Tasks {
 		result[k] = v
 	}
@@ -175,7 +174,7 @@ func (gs *GlobalState) GetAllTasks() map[string]*types.Task {
 }
 
 // UpdateTask 更新任务
-func (gs *GlobalState) UpdateTask(taskID string, updater func(*types.Task)) {
+func (gs *GlobalState) UpdateTask(taskID string, updater func(*ds.Task)) {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
@@ -196,7 +195,7 @@ func (gs *GlobalState) DeleteTask(taskID string) {
 // ==================== Message Management ====================
 
 // AddMessage 添加消息
-func (gs *GlobalState) AddMessage(msg *types.Message) {
+func (gs *GlobalState) AddMessage(msg *ds.Message) {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 	gs.Messages = append(gs.Messages, msg)
@@ -204,21 +203,21 @@ func (gs *GlobalState) AddMessage(msg *types.Message) {
 }
 
 // GetMessages 获取消息
-func (gs *GlobalState) GetMessages() []*types.Message {
+func (gs *GlobalState) GetMessages() []*ds.Message {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
-	messages := make([]*types.Message, len(gs.Messages))
+	messages := make([]*ds.Message, len(gs.Messages))
 	copy(messages, gs.Messages)
 	return messages
 }
 
 // GetMessagesByReceiver 根据接收者获取消息
-func (gs *GlobalState) GetMessagesByReceiver(receiver string) []*types.Message {
+func (gs *GlobalState) GetMessagesByReceiver(receiver string) []*ds.Message {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
-	var messages []*types.Message
+	var messages []*ds.Message
 	for _, msg := range gs.Messages {
 		if msg.Receiver == receiver {
 			messages = append(messages, msg)
@@ -355,7 +354,7 @@ func (gs *GlobalState) UpdateCurrentTime(t time.Time) {
 func (gs *GlobalState) ClearTasks() {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
-	gs.Tasks = make(map[string]*types.Task)
+	gs.Tasks = make(map[string]*ds.Task)
 	gs.Version++
 }
 
@@ -363,7 +362,7 @@ func (gs *GlobalState) ClearTasks() {
 func (gs *GlobalState) ClearMessages() {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
-	gs.Messages = make([]*types.Message, 0)
+	gs.Messages = make([]*ds.Message, 0)
 	gs.Version++
 }
 
@@ -373,8 +372,8 @@ func (gs *GlobalState) ClearAll() {
 	defer gs.mu.Unlock()
 
 	gs.Agents = make(map[string]*AgentState)
-	gs.Tasks = make(map[string]*types.Task)
-	gs.Messages = make([]*types.Message, 0)
+	gs.Tasks = make(map[string]*ds.Task)
+	gs.Messages = make([]*ds.Message, 0)
 	gs.CurrentTime = time.Now()
 	gs.StrategicGoals = make(map[string]any)
 	gs.KPIs = make(map[string]float64)

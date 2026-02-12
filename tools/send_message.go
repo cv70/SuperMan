@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"superman/ds"
 	"superman/mailbox"
-	"superman/types"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"
@@ -43,10 +43,12 @@ func (m *SendMessage) schemaModifier() utils.SchemaModifierFn {
 func (m *SendMessage) Invoke(ctx context.Context, req SendMessageRequest) (SendMessageResponse, error) {
 	var e error
 	for _, receiver := range req.Receivers {
-		msg, err := types.NewMessage(
+		msg, err := ds.NewRequestMessage(
 			m.Sender,
 			receiver,
+			"message",
 			req.Body,
+			nil,
 		)
 		if err != nil {
 			e = errors.Join(e, fmt.Errorf("failed to create message, receiver: %v, err: %v", receiver, err))

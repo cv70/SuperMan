@@ -10,10 +10,10 @@ import (
 
 	"superman/agents"
 	"superman/config"
+	"superman/ds"
 	"superman/infra"
 	"superman/mailbox"
 	"superman/scheduler"
-	"superman/types"
 	"superman/workflow"
 
 	"github.com/cv70/pkgo/mistake"
@@ -36,7 +36,6 @@ func main() {
 	orchestrator := workflow.NewOrchestrator(mailboxBus)
 
 	schedulerInstance := scheduler.NewAutoScheduler()
-	taskGenerator := scheduler.NewDefaultTaskGenerator()
 
 	fmt.Println("\n正在创建AI智能体...")
 
@@ -58,7 +57,8 @@ func main() {
 
 		schedulerInstance.AddAgent(agentConfig.Name, 3)
 
-		tasks, err := taskGenerator.GenerateTasks(ctx, agent)
+		// 调用Agent的GenerateTasks方法生成任务
+		tasks, err := agent.GenerateTasks(ctx)
 		if err != nil {
 			slog.Error("failed to generate tasks", slog.String("agent", agentConfig.Name), slog.Any("error", err))
 		} else {
@@ -109,10 +109,12 @@ func processInput(agentMap map[string]agents.Agent, mailboxBus *mailbox.MailboxB
 	switch command {
 	case "send":
 		message := strings.Join(parts[1:], " ")
-		msg, err := types.NewMessage(
+		msg, err := ds.NewRequestMessage(
 			"user",
 			"chairman",
+			"message",
 			message,
+			nil,
 		)
 		if err != nil {
 			slog.Error("failed to create message", slog.Any("e", err))

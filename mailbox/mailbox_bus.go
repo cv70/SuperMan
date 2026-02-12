@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sync"
 
+	"superman/ds"
 	"superman/state"
-	"superman/types"
 )
 
 // MailboxBus 信箱总线
@@ -75,7 +75,7 @@ func (b *MailboxBus) GetMailbox(name string) (*Mailbox, error) {
 }
 
 // Send 发送消息到指定Mailbox
-func (b *MailboxBus) Send(msg *types.Message) error {
+func (b *MailboxBus) Send(msg *ds.Message) error {
 	if msg == nil {
 		return fmt.Errorf("message is nil")
 	}
@@ -85,14 +85,14 @@ func (b *MailboxBus) Send(msg *types.Message) error {
 		return err
 	}
 
-	m.Send(msg)
+	m.PushInbox(msg)
 	return nil
 }
 
 // SendTo 发送消息到指定角色
 func (b *MailboxBus) SendTo(sender, receiver string, content map[string]interface{}) error {
 	body := fmt.Sprintf("%v", content)
-	return b.Send(&types.Message{
+	return b.Send(&ds.Message{
 		Sender:   sender,
 		Receiver: receiver,
 		Body:     body,
