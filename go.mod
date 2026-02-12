@@ -6,6 +6,7 @@ require (
 	github.com/cloudwego/eino v0.7.32
 	github.com/cloudwego/eino-ext/components/model/qwen v0.1.5
 	github.com/cv70/pkgo v0.0.3
+	github.com/eino-contrib/jsonschema v1.0.3
 	github.com/google/uuid v1.6.0
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/sqlite v1.6.0
@@ -21,7 +22,6 @@ require (
 	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/cloudwego/eino-ext/libs/acl/openai v0.1.11 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/eino-contrib/jsonschema v1.0.3 // indirect
 	github.com/evanphx/json-patch v0.5.2 // indirect
 	github.com/goph/emperror v0.17.2 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect

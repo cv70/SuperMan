@@ -7,8 +7,7 @@ SuperMan 是一个由多智能体组成的虚拟AI公司，完整模拟真实企
 ### 🚀 技术亮点
 
 - **Go 语言实现**: 高性能、原生并发支持
-- **Mailbox 消息系统**: 自研异步消息队列，支持优先级、幂等性、超时控制
-- **Google ADK 集成**: 基于 Google Agent Development Kit 的AI智能体框架
+- **Mailbox 消息系统**: 自研信箱系统，支持多智能体异步通信
 - **11个专业角色**: Chairman、CEO、CTO、CPO、CMO、CFO、HR、R&D、数据分析师、客户支持、运营专员
 
 ## 🧑‍💼 核心角色与职责
@@ -342,7 +341,6 @@ MailboxBus.Send(msg)
 | 组件 | 技术选型 | 说明 |
 |------|---------|------|
 | **编程语言** | Go 1.24+ | 高性能、原生并发支持 |
-| **智能体框架** | Google ADK | Google Agent Development Kit |
 | **消息系统** | Mailbox (自研) | 基于 Go Channel 的异步消息队列 |
 | **编排器** | Orchestrator | 集成 MailboxBus 的工作流编排 |
 | **状态管理** | StateManager | 内存状态管理 + 全局 CompanyState |

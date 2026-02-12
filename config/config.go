@@ -8,7 +8,7 @@ import (
 
 type Config struct {
 	LLM      []LLMConfig            `yaml:"llm"`
-	Database *DatabaseConfig        `yaml:"database"`
+	DB       *DBConfig              `yaml:"db"`
 	Agents   []AgentConfig          `yaml:"agents"`
 }
 
@@ -18,8 +18,8 @@ type LLMConfig struct {
 	APIKey  string `yaml:"api_key"`
 }
 
-type DatabaseConfig struct {
-	DBName string `json:"db_name"`
+type DBConfig struct {
+	Name string `json:"name"`
 }
 
 type AgentConfig struct {
@@ -29,7 +29,6 @@ type AgentConfig struct {
 	Temperature float64  `yaml:"temperature"`
 	Hierarchy   int      `yaml:"hierarchy"`
 	SkillDir    string   `yaml:"skill_dir"`
-	SendTo      []string `yaml:"send_to"`
 }
 
 var AppConfig Config

@@ -78,12 +78,12 @@ func (o *orchestratorImpl) RunTask(task *types.Task) error {
 
 // SendMessage 通过mailbox发送消息
 func (o *orchestratorImpl) SendMessage(msg *types.Message) error {
-	msg, err := types.NewMessage(msg.Sender, msg.Receiver, msg.Body)
+	newMsg, err := types.NewMessage(msg.Sender, msg.Receiver, msg.Body)
 	if err != nil {
 		return err
 	}
 
-	return o.MailboxBus.Send(msg)
+	return o.MailboxBus.Send(newMsg)
 }
 
 // SendMessageTo 发送消息到指定角色
@@ -98,13 +98,4 @@ func (o *orchestratorImpl) SendMessageTo(sender, receiver string, content map[st
 // GetMailboxBus 获取mailbox管理器
 func (o *orchestratorImpl) GetMailboxBus() *mailbox.MailboxBus {
 	return o.MailboxBus
-}
-
-// convertContent 转换types.Message的content格式
-func convertContent(content map[string]any) map[string]interface{} {
-	result := make(map[string]interface{})
-	for k, v := range content {
-		result[k] = v
-	}
-	return result
 }

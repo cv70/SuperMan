@@ -27,7 +27,7 @@ type MessageHandler func(msg *types.Message) error
 type Mailbox struct {
 	bus      *MailboxBus
 	receiver string
-	inbox    chan *types.Message // 收件箱
+	Inbox    chan *types.Message // 收件箱（导出字段）
 	archive  []*types.Message    // 消息归档
 	mu       sync.RWMutex
 }
@@ -37,7 +37,7 @@ func NewMailbox(config *MailboxConfig) *Mailbox {
 	mb := &Mailbox{
 		bus:      config.MailboxBus,
 		receiver: config.Receiver,
-		inbox:    make(chan *types.Message, config.InboxBufferSize),
+		Inbox:    make(chan *types.Message, config.InboxBufferSize),
 		archive:  make([]*types.Message, 0),
 	}
 
@@ -47,13 +47,13 @@ func NewMailbox(config *MailboxConfig) *Mailbox {
 // Send 发送消息到Mailbox（外部调用）
 func (mb *Mailbox) Send(msg *types.Message) {
 	// 投递到inbox
-	mb.inbox <- msg
+	mb.Inbox <- msg
 }
 
 // PushInbox 向收件箱推送消息（内部使用）
 func (mb *Mailbox) PushInbox(msg *types.Message) bool {
 	select {
-	case mb.inbox <- msg:
+	case mb.Inbox <- msg:
 		return true
 	default:
 		return false // 信箱已满
@@ -62,7 +62,7 @@ func (mb *Mailbox) PushInbox(msg *types.Message) bool {
 
 // PopInbox 从收件箱取出消息
 func (mb *Mailbox) PopInbox() *types.Message {
-	return <-mb.inbox
+	return <-mb.Inbox
 }
 
 // PushOutbox 向发件箱推送消息
@@ -89,7 +89,7 @@ func (mb *Mailbox) GetMailboxBus() *MailboxBus {
 
 // GetInboxCount 获取收件箱消息数量
 func (mb *Mailbox) GetInboxCount() int {
-	return len(mb.inbox)
+	return len(mb.Inbox)
 }
 
 // GetArchiveCount 获取归档消息数量
@@ -105,9 +105,9 @@ func (mb *Mailbox) GetMailboxStats() map[string]interface{} {
 	defer mb.mu.Unlock()
 
 	return map[string]interface{}{
-		"inbox_count":   len(mb.inbox),
+		"inbox_count":   len(mb.Inbox),
 		"archive_count": len(mb.archive),
 		"receiver":      mb.receiver,
-		"buffer_size":   cap(mb.inbox),
+		"buffer_size":   cap(mb.Inbox),
 	}
 }

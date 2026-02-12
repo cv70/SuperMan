@@ -17,7 +17,7 @@ func NewRegistry(ctx context.Context, c *config.Config) (*Registry, error) {
 	r := &Registry{
 		LLM: make(map[string]model.ToolCallingChatModel),
 	}
-	db, err := NewDB(ctx, c.Database)
+	db, err := NewDB(ctx, c.DB)
 	if err != nil {
 		return nil, err
 	}

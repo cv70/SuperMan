@@ -16,9 +16,11 @@ import (
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/adk/middlewares/skill"
 	"github.com/cloudwego/eino/adk/prebuilt/deep"
+	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
+	"github.com/cv70/pkgo/gslice"
 )
 
 // Agent 定义 Agent 接口
@@ -43,6 +45,7 @@ type Agent interface {
 	Stop() error
 	IsRunning() bool
 	GetExecutionStats() map[string]interface{}
+	GetLLMModel() model.ToolCallingChatModel
 }
 
 // BaseAgentImpl 是所有 Agent 的基础实现
@@ -67,6 +70,8 @@ type BaseAgentImpl struct {
 
 	globalState *state.GlobalState
 
+	llmModel model.ToolCallingChatModel // LLM 模型
+
 	stopCh       chan struct{}
 	wg           sync.WaitGroup
 	running      bool
@@ -76,12 +81,12 @@ type BaseAgentImpl struct {
 var _ Agent = (*BaseAgentImpl)(nil)
 
 // NewBaseAgent 创建基础 Agent 实例
-func NewBaseAgent(ctx context.Context, agentConfig config.AgentConfig) (*BaseAgentImpl, error) {
+func NewBaseAgent(ctx context.Context, llm model.ToolCallingChatModel, agentConfig config.AgentConfig, allAgentConfig ...config.AgentConfig) (*BaseAgentImpl, error) {
 	mailboxConfig := mailbox.DefaultMailboxConfig(agentConfig.Name)
 	mailbox := mailbox.NewMailbox(mailboxConfig)
 
 	localSkillBackend, err := skill.NewLocalBackend(&skill.LocalBackendConfig{
-		BaseDir: "./skills",
+		BaseDir: agentConfig.SkillDir,
 	})
 	if err != nil {
 		return nil, err
@@ -93,9 +98,12 @@ func NewBaseAgent(ctx context.Context, agentConfig config.AgentConfig) (*BaseAge
 	if err != nil {
 		return nil, err
 	}
+	allAgentNames := gslice.Map(allAgentConfig, func(c config.AgentConfig) string {
+		return c.Name
+	})
 	sendMessage := tools.SendMessage{
 		Sender:     agentConfig.Name,
-		Receivers:  agentConfig.SendTo,
+		Receivers:  allAgentNames,
 		MailboxBus: mailbox.GetMailboxBus(),
 	}
 	sendMessageTool, err := sendMessage.ToEinoTool()
@@ -106,6 +114,7 @@ func NewBaseAgent(ctx context.Context, agentConfig config.AgentConfig) (*BaseAge
 	agent, err := deep.New(ctx, &deep.Config{
 		Name:        agentConfig.Name,
 		Description: agentConfig.Desc,
+		ChatModel:   llm,
 		Middlewares: []adk.AgentMiddleware{skillBackend},
 		ToolsConfig: adk.ToolsConfig{
 			ToolsNodeConfig: compose.ToolsNodeConfig{
@@ -133,6 +142,7 @@ func NewBaseAgent(ctx context.Context, agentConfig config.AgentConfig) (*BaseAge
 		stopCh:             make(chan struct{}),
 		running:            false,
 		globalState:        nil,
+		llmModel:           llm,
 	}, nil
 }
 
@@ -212,7 +222,8 @@ func (a *BaseAgentImpl) ProcessMessage(ctx context.Context, msg *types.Message) 
 		}
 
 		// AgentEvent 处理完成，事件包含 Action 结果
-		_ = event
+		// event.Output
+		fmt.Println(event.Output.MessageOutput)
 	}
 
 	return nil
@@ -318,6 +329,13 @@ func (a *BaseAgentImpl) GetGlobalState() *state.GlobalState {
 	return a.globalState
 }
 
+// GetLLMModel 获取 LLM 模型
+func (a *BaseAgentImpl) GetLLMModel() model.ToolCallingChatModel {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.llmModel
+}
+
 // ReceiveMessage 接收消息
 func (a *BaseAgentImpl) ReceiveMessage(msg *types.Message) error {
 	if msg == nil {
@@ -406,12 +424,7 @@ func (a *BaseAgentImpl) messageProcessingLoop() {
 		select {
 		case <-a.stopCh:
 			return
-		default:
-			msg := a.mailbox.PopInbox()
-			if msg == nil {
-				time.Sleep(10 * time.Millisecond)
-				continue
-			}
+		case msg := <-a.mailbox.Inbox:
 			a.processMessageAsync(msg)
 		}
 	}

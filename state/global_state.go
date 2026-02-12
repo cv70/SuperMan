@@ -456,7 +456,7 @@ func (gs *GlobalState) GetVersion() int64 {
 }
 
 func (gs *GlobalState) AddPublicAnnouncement(announcement string) {
-	gs.mu.RLock()
-	defer gs.mu.RUnlock()
+	gs.mu.Lock()
+	defer gs.mu.Unlock()
 	gs.Announcements = append(gs.Announcements, announcement)
 }

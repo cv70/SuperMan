@@ -23,9 +23,3 @@ func NewMessage(sender, receiver string, body string) (*Message, error) {
 		Body:     body,
 	}, nil
 }
-
-// parseContent 解析消息Body为map
-func parseContent(body string) map[string]any {
-	result := make(map[string]any)
-	return result
-}
