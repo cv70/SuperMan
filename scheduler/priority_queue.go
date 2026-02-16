@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"sort"
 	"superman/ds"
 	"sync"
 	"time"
@@ -56,6 +57,21 @@ func (q *TaskQueue) Dequeue() *ds.Task {
 	return task
 }
 
+// DequeueIf 取出第一个满足条件的任务
+func (q *TaskQueue) DequeueIf(predicate func(*ds.Task) bool) *ds.Task {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	q.sortByPriority()
+	for i, task := range q.queue {
+		if predicate(task) {
+			q.queue = append(q.queue[:i], q.queue[i+1:]...)
+			return task
+		}
+	}
+	return nil
+}
+
 func (q *TaskQueue) Peek() *ds.Task {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -96,13 +112,9 @@ func (q *TaskQueue) GetByPriority(priority string) *ds.Task {
 }
 
 func (q *TaskQueue) sortByPriority() {
-	for i := 0; i < len(q.queue); i++ {
-		for j := i + 1; j < len(q.queue); j++ {
-			priI := PriorityValue[string(q.queue[i].Priority)]
-			priJ := PriorityValue[string(q.queue[j].Priority)]
-			if priI > priJ {
-				q.queue[i], q.queue[j] = q.queue[j], q.queue[i]
-			}
-		}
-	}
+	sort.SliceStable(q.queue, func(i, j int) bool {
+		priI := PriorityValue[string(q.queue[i].Priority)]
+		priJ := PriorityValue[string(q.queue[j].Priority)]
+		return priI < priJ
+	})
 }

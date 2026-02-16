@@ -188,7 +188,7 @@ func (s *AgentState) AddMessage(msg *ds.Message) {
 // UpdateMetric 更新性能指标
 func (s *AgentState) UpdateMetric(key string, value float64) {
 	s.PerformanceMetrics[key] = value
-	s.LastActive = time.Time{}
+	s.LastActive = time.Now()
 }
 
 // ==================== State Query Methods ====================

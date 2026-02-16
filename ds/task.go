@@ -1,6 +1,7 @@
 package ds
 
 import (
+	"superman/utils"
 	"time"
 )
 
@@ -78,7 +79,11 @@ func NewTaskWithDeliverables(taskID, title, description, assignedTo, assignedBy 
 
 // GenerateTaskID 生成任务ID
 func GenerateTaskID() string {
-	return "auto_" + time.Now().Format("20060102_150405")
+	id, err := utils.NewUUID()
+	if err != nil {
+		return "auto_" + time.Now().Format("20060102_150405.000000000")
+	}
+	return id
 }
 
 // SetDependencies 设置依赖

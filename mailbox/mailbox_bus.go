@@ -85,8 +85,7 @@ func (b *MailboxBus) Send(msg *ds.Message) error {
 		return err
 	}
 
-	m.PushInbox(msg)
-	return nil
+	return m.PushInbox(msg)
 }
 
 // SendTo 发送消息到指定角色

@@ -1,6 +1,10 @@
 package mailbox
 
 import (
+	"fmt"
+	"log/slog"
+	"time"
+
 	"superman/ds"
 	"sync"
 )
@@ -44,9 +48,19 @@ func NewMailbox(config *MailboxConfig) *Mailbox {
 	return mb
 }
 
-// PushInbox 向收件箱推送消息
-func (mb *Mailbox) PushInbox(msg *ds.Message) {
-	mb.Inbox <- msg
+// PushInbox 向收件箱推送消息（非阻塞，带超时）
+func (mb *Mailbox) PushInbox(msg *ds.Message) error {
+	select {
+	case mb.Inbox <- msg:
+		return nil
+	case <-time.After(5 * time.Second):
+		slog.Warn("mailbox full, message dropped",
+			slog.String("receiver", mb.receiver),
+			slog.String("msg_id", msg.ID),
+			slog.String("sender", msg.Sender),
+		)
+		return fmt.Errorf("mailbox %s is full, message %s dropped", mb.receiver, msg.ID)
+	}
 }
 
 // PopInbox 从收件箱取出消息

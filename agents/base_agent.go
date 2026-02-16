@@ -2,7 +2,10 @@ package agents
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,6 +25,12 @@ import (
 	"github.com/cloudwego/eino/schema"
 	"github.com/cv70/pkgo/gslice"
 )
+
+// TaskSubmitFunc 任务提交回调（提交到调度器）
+type TaskSubmitFunc func(task *ds.Task, priority string)
+
+// OnTaskCompleteFunc 任务完成回调（通知调度器减少负载）
+type OnTaskCompleteFunc func(taskID, agentName string, success bool)
 
 // Agent 定义 Agent 接口
 type Agent interface {
@@ -46,7 +55,8 @@ type Agent interface {
 	IsRunning() bool
 	GetExecutionStats() map[string]interface{}
 	GetLLMModel() model.ToolCallingChatModel
-	// GenerateTasks 生成该Agent需要执行的任务
+	SetTaskSubmitter(fn TaskSubmitFunc)
+	SetOnTaskComplete(fn OnTaskCompleteFunc)
 	GenerateTasks(ctx context.Context) ([]*ds.Task, error)
 }
 
@@ -66,7 +76,9 @@ type BaseAgentImpl struct {
 	lastActive         time.Time
 	roleHierarchy      int
 
-	mailbox          *mailbox.Mailbox
+	mailbox    *mailbox.Mailbox
+	mailboxBus *mailbox.MailboxBus
+
 	executionHistory []*state.AgentExecutionHistory
 	historyMaxSize   int
 
@@ -74,18 +86,26 @@ type BaseAgentImpl struct {
 
 	llmModel model.ToolCallingChatModel // LLM 模型
 
+	// 生命周期
 	stopCh       chan struct{}
 	wg           sync.WaitGroup
 	running      bool
 	processingMu sync.RWMutex
+
+	// 回调
+	taskSubmitter  TaskSubmitFunc
+	onTaskComplete OnTaskCompleteFunc
+
+	// 任务生成配置
+	taskGenInterval time.Duration
 }
 
 var _ Agent = (*BaseAgentImpl)(nil)
 
 // NewBaseAgent 创建基础 Agent 实例
-func NewBaseAgent(ctx context.Context, llm model.ToolCallingChatModel, agentConfig config.AgentConfig, allAgentConfig ...config.AgentConfig) (*BaseAgentImpl, error) {
+func NewBaseAgent(ctx context.Context, llm model.ToolCallingChatModel, bus *mailbox.MailboxBus, agentConfig config.AgentConfig, allAgentConfig ...config.AgentConfig) (*BaseAgentImpl, error) {
 	mailboxConfig := mailbox.DefaultMailboxConfig(agentConfig.Name)
-	mailbox := mailbox.NewMailbox(mailboxConfig)
+	mb := mailbox.NewMailbox(mailboxConfig)
 
 	localSkillBackend, err := skill.NewLocalBackend(&skill.LocalBackendConfig{
 		BaseDir: agentConfig.SkillDir,
@@ -106,7 +126,7 @@ func NewBaseAgent(ctx context.Context, llm model.ToolCallingChatModel, agentConf
 	sendMessage := tools.SendMessage{
 		Sender:     agentConfig.Name,
 		Receivers:  allAgentNames,
-		MailboxBus: mailbox.GetMailboxBus(),
+		MailboxBus: bus, // 使用传入的 MailboxBus，而非未初始化的 mailbox.bus
 	}
 	sendMessageTool, err := sendMessage.ToEinoTool()
 	if err != nil {
@@ -128,6 +148,14 @@ func NewBaseAgent(ctx context.Context, llm model.ToolCallingChatModel, agentConf
 		return nil, err
 	}
 
+	// 解析任务生成间隔
+	taskGenInterval := 30 * time.Minute
+	if agentConfig.TaskGenInterval != "" {
+		if d, err := time.ParseDuration(agentConfig.TaskGenInterval); err == nil {
+			taskGenInterval = d
+		}
+	}
+
 	return &BaseAgentImpl{
 		name:               agentConfig.Name,
 		desc:               agentConfig.Desc,
@@ -138,14 +166,30 @@ func NewBaseAgent(ctx context.Context, llm model.ToolCallingChatModel, agentConf
 		performanceMetrics: make(map[string]float64),
 		lastActive:         time.Now(),
 		roleHierarchy:      agentConfig.Hierarchy,
-		mailbox:            mailbox,
+		mailbox:            mb,
+		mailboxBus:         bus,
 		executionHistory:   make([]*state.AgentExecutionHistory, 0),
 		historyMaxSize:     10000,
 		stopCh:             make(chan struct{}),
 		running:            false,
 		globalState:        nil,
 		llmModel:           llm,
+		taskGenInterval:    taskGenInterval,
 	}, nil
+}
+
+// SetTaskSubmitter 设置任务提交回调
+func (a *BaseAgentImpl) SetTaskSubmitter(fn TaskSubmitFunc) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.taskSubmitter = fn
+}
+
+// SetOnTaskComplete 设置任务完成回调
+func (a *BaseAgentImpl) SetOnTaskComplete(fn OnTaskCompleteFunc) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.onTaskComplete = fn
 }
 
 // GetName 获取名称
@@ -192,23 +236,19 @@ func (a *BaseAgentImpl) ProcessMessage(ctx context.Context, msg *ds.Message) err
 	case ds.MessageTypeRequest:
 		body, ok := msg.GetRequestBody()
 		if ok {
-			// 处理请求消息
 			return a.handleRequestMessage(ctx, body)
 		}
 	case ds.MessageTypeNotification:
 		body, ok := msg.GetNotificationBody()
 		if ok {
-			// 处理通知消息
 			return a.handleNotificationMessage(ctx, body)
 		}
 	case ds.MessageTypeResponse:
 		body, ok := msg.GetResponseBody()
 		if ok {
-			// 处理响应消息
 			return a.handleResponseMessage(ctx, body)
 		}
 	default:
-		// 默认处理：将消息内容传递给agent
 		break
 	}
 
@@ -222,18 +262,18 @@ func (a *BaseAgentImpl) ProcessMessage(ctx context.Context, msg *ds.Message) err
 		Messages: messages,
 	})
 
-	// 处理异步迭代器返回的事件
 	for {
 		event, ok := iter.Next()
 		if !ok {
 			break
 		}
-
 		if event == nil {
 			continue
 		}
-
-		fmt.Println(event.Output.MessageOutput)
+		slog.Info("agent response",
+			slog.String("agent", a.name),
+			slog.String("output", fmt.Sprintf("%v", event.Output.MessageOutput)),
+		)
 	}
 
 	return nil
@@ -241,10 +281,8 @@ func (a *BaseAgentImpl) ProcessMessage(ctx context.Context, msg *ds.Message) err
 
 // handleRequestMessage 处理请求消息
 func (a *BaseAgentImpl) handleRequestMessage(ctx context.Context, body *ds.RequestBody) error {
-	// 根据请求类型进行处理
 	switch body.Type {
 	case "task_query":
-		// 返回当前任务状态
 		a.mu.RLock()
 		tasks := make([]map[string]any, 0, len(a.currentTasks))
 		for _, t := range a.currentTasks {
@@ -257,13 +295,12 @@ func (a *BaseAgentImpl) handleRequestMessage(ctx context.Context, body *ds.Reque
 		}
 		a.mu.RUnlock()
 
-		// 发送响应
 		respBody := map[string]any{
 			"tasks": tasks,
 		}
 		resp, err := ds.NewRequestMessage(
 			a.name,
-			"unknown", // 响应的接收者需要根据上下文确定
+			"unknown",
 			"task_query_response",
 			respBody,
 			nil,
@@ -271,10 +308,9 @@ func (a *BaseAgentImpl) handleRequestMessage(ctx context.Context, body *ds.Reque
 		if err != nil {
 			return err
 		}
-		a.MailboxSend(resp)
+		_ = a.mailbox.PushInbox(resp)
 	default:
-		// 默认处理：传递给agent
-		fmt.Printf("Processing request: %s\n", body.Type)
+		slog.Debug("processing request", slog.String("agent", a.name), slog.String("type", body.Type))
 	}
 
 	return nil
@@ -282,13 +318,21 @@ func (a *BaseAgentImpl) handleRequestMessage(ctx context.Context, body *ds.Reque
 
 // handleNotificationMessage 处理通知消息
 func (a *BaseAgentImpl) handleNotificationMessage(ctx context.Context, body *ds.NotificationBody) error {
-	fmt.Printf("Received notification: %s - %s\n", body.Title, body.Content)
+	slog.Info("received notification",
+		slog.String("agent", a.name),
+		slog.String("title", body.Title),
+		slog.String("content", body.Content),
+	)
 	return nil
 }
 
 // handleResponseMessage 处理响应消息
 func (a *BaseAgentImpl) handleResponseMessage(ctx context.Context, body *ds.ResponseBody) error {
-	fmt.Printf("Received response: request_id=%s, success=%v\n", body.RequestID, body.Success)
+	slog.Info("received response",
+		slog.String("agent", a.name),
+		slog.String("request_id", body.RequestID),
+		slog.Bool("success", body.Success),
+	)
 	return nil
 }
 
@@ -301,6 +345,12 @@ func (a *BaseAgentImpl) ProcessTask(ctx context.Context, task *ds.Task) error {
 	if !running {
 		return fmt.Errorf("agent is not running")
 	}
+
+	slog.Info("processing task",
+		slog.String("agent", a.name),
+		slog.String("task_id", task.ID),
+		slog.String("title", task.Title),
+	)
 
 	// 更新任务状态
 	taskClone := task.Copy()
@@ -342,11 +392,12 @@ func (a *BaseAgentImpl) ProcessTask(ctx context.Context, task *ds.Task) error {
 	duration := time.Since(startTime)
 	history.Duration = duration
 
+	success := true
 	if err != nil {
+		success = false
 		history.Status = "failed"
 		history.ErrorMessage = err.Error()
 
-		// 更新任务状态为失败
 		a.mu.Lock()
 		a.workload = float64(len(a.currentTasks))
 		a.mu.Unlock()
@@ -363,10 +414,8 @@ func (a *BaseAgentImpl) ProcessTask(ctx context.Context, task *ds.Task) error {
 			"duration_ms":  duration.Milliseconds(),
 		}
 
-		// 完成任务
 		a.mu.Lock()
 		a.completedTasks = append(a.completedTasks, task.Copy())
-		// 从当前任务中移除
 		for i, t := range a.currentTasks {
 			if t.ID == task.ID {
 				a.currentTasks = append(a.currentTasks[:i], a.currentTasks[i+1:]...)
@@ -384,33 +433,41 @@ func (a *BaseAgentImpl) ProcessTask(ctx context.Context, task *ds.Task) error {
 	}
 
 	a.updateExecutionHistory(history)
+
+	// 通知调度器任务完成
+	a.mu.RLock()
+	completeFn := a.onTaskComplete
+	a.mu.RUnlock()
+	if completeFn != nil {
+		completeFn(task.ID, a.name, success)
+	}
+
 	return err
 }
 
 // executeTask 执行任务
 func (a *BaseAgentImpl) executeTask(ctx context.Context, task *ds.Task) error {
-	// 构建任务消息
 	messages := []*schema.Message{
 		schema.UserMessage(fmt.Sprintf("任务: %s\n描述: %s\n请完成此任务。", task.Title, task.Description)),
 	}
 
-	// 运行 agent
 	iter := a.agent.Run(ctx, &adk.AgentInput{
 		Messages: messages,
 	})
 
-	// 处理异步迭代器返回的事件
 	for {
 		event, ok := iter.Next()
 		if !ok {
 			break
 		}
-
 		if event == nil {
 			continue
 		}
-
-		fmt.Println(event.Output.MessageOutput)
+		slog.Info("task execution output",
+			slog.String("agent", a.name),
+			slog.String("task_id", task.ID),
+			slog.String("output", fmt.Sprintf("%v", event.Output.MessageOutput)),
+		)
 	}
 
 	return nil
@@ -438,8 +495,8 @@ func (a *BaseAgentImpl) GetMailbox() *mailbox.Mailbox {
 }
 
 // MailboxSend 通过信箱发送消息
-func (a *BaseAgentImpl) MailboxSend(msg *ds.Message) {
-	a.mailbox.PushInbox(msg)
+func (a *BaseAgentImpl) MailboxSend(msg *ds.Message) error {
+	return a.mailbox.PushInbox(msg)
 }
 
 // GetExecutionHistory 获取执行历史
@@ -534,7 +591,9 @@ func (a *BaseAgentImpl) ReceiveMessage(msg *ds.Message) error {
 		return fmt.Errorf("message is nil")
 	}
 	msg.Receiver = a.name
-	a.mailbox.PushInbox(msg)
+	if err := a.mailbox.PushInbox(msg); err != nil {
+		return err
+	}
 	a.mu.Lock()
 	a.messages = append(a.messages, msg)
 	a.lastActive = time.Now()
@@ -542,7 +601,7 @@ func (a *BaseAgentImpl) ReceiveMessage(msg *ds.Message) error {
 	return nil
 }
 
-// Start 启动 Agent
+// Start 启动 Agent（消息处理循环 + 任务生成循环）
 func (a *BaseAgentImpl) Start() error {
 	a.processingMu.Lock()
 	defer a.processingMu.Unlock()
@@ -551,8 +610,16 @@ func (a *BaseAgentImpl) Start() error {
 	}
 	a.running = true
 	a.stopCh = make(chan struct{})
+
+	// 启动消息处理循环
 	a.wg.Add(1)
 	go a.messageProcessingLoop()
+
+	// 启动任务生成循环
+	a.wg.Add(1)
+	go a.taskGenerationLoop()
+
+	slog.Info("agent started", slog.String("name", a.name))
 	return nil
 }
 
@@ -566,6 +633,7 @@ func (a *BaseAgentImpl) Stop() error {
 	a.running = false
 	close(a.stopCh)
 	a.wg.Wait()
+	slog.Info("agent stopped", slog.String("name", a.name))
 	return nil
 }
 
@@ -619,13 +687,66 @@ func (a *BaseAgentImpl) messageProcessingLoop() {
 	}
 }
 
+// taskGenerationLoop 任务生成循环（Phase 2: 自驱任务生成）
+func (a *BaseAgentImpl) taskGenerationLoop() {
+	defer a.wg.Done()
+
+	// 首次生成前先等待系统完成初始化
+	select {
+	case <-a.stopCh:
+		return
+	case <-time.After(10 * time.Second):
+	}
+
+	ticker := time.NewTicker(a.taskGenInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-a.stopCh:
+			return
+		case <-ticker.C:
+			a.mu.RLock()
+			submitter := a.taskSubmitter
+			a.mu.RUnlock()
+
+			if submitter == nil {
+				continue
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			tasks, err := a.GenerateTasks(ctx)
+			cancel()
+
+			if err != nil {
+				slog.Error("task generation failed",
+					slog.String("agent", a.name),
+					slog.Any("error", err),
+				)
+				continue
+			}
+
+			for _, task := range tasks {
+				priority := string(task.Priority)
+				if priority == "" {
+					priority = "Medium"
+				}
+				submitter(task, priority)
+				slog.Info("auto-generated task submitted",
+					slog.String("agent", a.name),
+					slog.String("task_id", task.ID),
+					slog.String("title", task.Title),
+				)
+			}
+		}
+	}
+}
+
 // processMessageAsync 异步处理消息
 func (a *BaseAgentImpl) processMessageAsync(msg *ds.Message) {
-	// 根据消息类型分发处理
 	if taskBody, ok := msg.GetTaskCreateBody(); ok {
-		// 这是任务创建消息
 		task := &ds.Task{
-			ID:       taskBody.TaskID,
+			ID:           taskBody.TaskID,
 			Title:        taskBody.Title,
 			Description:  taskBody.Description,
 			AssignedTo:   taskBody.AssignedTo,
@@ -641,7 +762,6 @@ func (a *BaseAgentImpl) processMessageAsync(msg *ds.Message) {
 		}
 		a.ProcessTask(context.Background(), task)
 	} else {
-		// 一般消息
 		a.ProcessMessage(context.Background(), msg)
 	}
 }
@@ -679,10 +799,119 @@ func (a *BaseAgentImpl) updateExecutionHistory(newHistory *state.AgentExecutionH
 	a.executionHistory = append(a.executionHistory, newHistory)
 }
 
-// GenerateTasks 生成该Agent需要执行的任务
-// 默认实现：返回空任务列表，子类可以重写此方法来定义特定任务
+// GenerateTasks 通过 LLM 生成该 Agent 需要执行的任务
 func (a *BaseAgentImpl) GenerateTasks(ctx context.Context) ([]*ds.Task, error) {
-	// 默认返回空任务列表
-	// 子类可以重写此方法来定义特定任务
-	return make([]*ds.Task, 0), nil
+	prompt := fmt.Sprintf(`你是 %s，职责描述：%s
+
+请根据你的角色职责，生成 1-3 个你当前应该执行的工作任务。
+每个任务应该是具体的、可执行的。
+
+请严格按照以下 JSON 数组格式返回，不要包含任何其他文字：
+[{"title": "任务标题", "description": "任务详细描述", "priority": "Medium"}]
+
+priority 可选值: Critical, High, Medium, Low
+`, a.name, a.desc)
+
+	messages := []*schema.Message{
+		schema.UserMessage(prompt),
+	}
+
+	resp, err := a.llmModel.Generate(ctx, messages)
+	if err != nil {
+		return nil, fmt.Errorf("LLM generate failed: %w", err)
+	}
+
+	content := resp.Content
+	if content == "" {
+		return make([]*ds.Task, 0), nil
+	}
+
+	// 解析 LLM 返回的 JSON
+	tasks, err := a.parseLLMTasks(content)
+	if err != nil {
+		slog.Warn("failed to parse LLM task response",
+			slog.String("agent", a.name),
+			slog.String("content", content),
+			slog.Any("error", err),
+		)
+		return make([]*ds.Task, 0), nil
+	}
+
+	return tasks, nil
+}
+
+// llmTaskResult LLM 返回的任务结构
+type llmTaskResult struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Priority    string `json:"priority"`
+}
+
+// parseLLMTasks 从 LLM 响应中解析任务列表
+func (a *BaseAgentImpl) parseLLMTasks(content string) ([]*ds.Task, error) {
+	// 尝试从 Markdown code block 中提取 JSON
+	jsonStr := extractJSON(content)
+
+	var results []llmTaskResult
+	if err := json.Unmarshal([]byte(jsonStr), &results); err != nil {
+		return nil, fmt.Errorf("json unmarshal failed: %w", err)
+	}
+
+	tasks := make([]*ds.Task, 0, len(results))
+	for _, r := range results {
+		if r.Title == "" {
+			continue
+		}
+		taskID := ds.GenerateTaskID()
+		priority := ds.TaskPriority(r.Priority)
+		if priority == "" {
+			priority = ds.TaskPriorityMedium
+		}
+		task := ds.NewTask(
+			taskID,
+			r.Title,
+			r.Description,
+			a.name, // 分配给自己
+			a.name, // 由自己生成
+			ds.TaskStatusPending,
+			priority,
+		)
+		task.Metadata["source"] = "llm_generated"
+		task.Metadata["generated_by"] = a.name
+		tasks = append(tasks, task)
+	}
+
+	return tasks, nil
+}
+
+// extractJSON 从文本中提取 JSON 数组
+func extractJSON(content string) string {
+	// 尝试从 markdown code block 中提取
+	if idx := strings.Index(content, "```json"); idx != -1 {
+		start := idx + 7
+		end := strings.Index(content[start:], "```")
+		if end != -1 {
+			return strings.TrimSpace(content[start : start+end])
+		}
+	}
+	if idx := strings.Index(content, "```"); idx != -1 {
+		start := idx + 3
+		// 跳过可能的语言标识行
+		if nlIdx := strings.Index(content[start:], "\n"); nlIdx != -1 {
+			start += nlIdx + 1
+		}
+		end := strings.Index(content[start:], "```")
+		if end != -1 {
+			return strings.TrimSpace(content[start : start+end])
+		}
+	}
+
+	// 直接查找 JSON 数组边界
+	start := strings.Index(content, "[")
+	end := strings.LastIndex(content, "]")
+	if start != -1 && end != -1 && end > start {
+		return content[start : end+1]
+	}
+
+	return content
 }

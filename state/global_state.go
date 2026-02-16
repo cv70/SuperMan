@@ -42,6 +42,7 @@ type GlobalState struct {
 type ExecutionHistory struct {
 	ExecutionID  string
 	Timestamp    time.Time
+	AgentName    string
 	TaskID       string
 	MessageID    string
 	Action       string
@@ -301,8 +302,9 @@ func (gs *GlobalState) GetExecutionHistoryByAgent(name string) []*ExecutionHisto
 
 	var history []*ExecutionHistory
 	for _, h := range gs.CompanyExecHistory {
-		_ = name
-		history = append(history, h)
+		if h.AgentName == name {
+			history = append(history, h)
+		}
 	}
 	return history
 }
