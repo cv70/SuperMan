@@ -1,0 +1,371 @@
+<script setup lang="ts">
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+
+
+interface Agent {
+  id: string
+  name: string
+  role: string
+  status: 'active' | 'idle' | 'busy' | 'error'
+  taskCount: number
+  lastActivity: string
+  health: number
+}
+
+interface Task {
+  id: string
+  title: string
+  priority: 'critical' | 'high' | 'medium' | 'low'
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+  assignedTo: string
+  createdAt: string
+  progress: number
+  dependencies: string[]
+}
+
+interface Message {
+  id: string
+  sender: string
+  receiver: string
+  type: string
+  content: string
+  timestamp: string
+  priority: 'critical' | 'high' | 'medium' | 'low'
+}
+
+const agents = ref<Agent[]>([
+  { id: 'chairman', name: 'Chairman', role: 'Chairman', status: 'active', taskCount: 3, lastActivity: '2 min ago', health: 95 },
+  { id: 'ceo', name: 'CEO', role: 'CEO', status: 'busy', taskCount: 5, lastActivity: '1 min ago', health: 92 },
+  { id: 'cto', name: 'CTO', role: 'CTO', status: 'active', taskCount: 4, lastActivity: '3 min ago', health: 88 },
+  { id: 'cpo', name: 'CPO', role: 'CPO', status: 'idle', taskCount: 2, lastActivity: '15 min ago', health: 96 },
+  { id: 'cmo', name: 'CMO', role: 'CMO', status: 'active', taskCount: 3, lastActivity: '5 min ago', health: 91 },
+  { id: 'cfo', name: 'CFO', role: 'CFO', status: 'busy', taskCount: 4, lastActivity: '2 min ago', health: 89 },
+  { id: 'hr', name: 'HR', role: 'HR', status: 'active', taskCount: 2, lastActivity: '10 min ago', health: 94 },
+  { id: 'rnd', name: 'R&D', role: 'R&D', status: 'busy', taskCount: 6, lastActivity: '30 sec ago', health: 97 },
+  { id: 'data', name: 'Data Analyst', role: 'Data Analyst', status: 'active', taskCount: 3, lastActivity: '7 min ago', health: 93 },
+  { id: 'support', name: 'Customer Support', role: 'Customer Support', status: 'active', taskCount: 5, lastActivity: '1 min ago', health: 90 },
+  { id: 'ops', name: 'Operations', role: 'Operations', status: 'active', taskCount: 4, lastActivity: '4 min ago', health: 95 }
+])
+
+const tasks = ref<Task[]>([
+  { id: 'task-001', title: 'Review quarterly financial report', priority: 'critical', status: 'completed', assignedTo: 'cfo', createdAt: '2 hours ago', progress: 100, dependencies: [] },
+  { id: 'task-002', title: 'Analyze market trends', priority: 'high', status: 'completed', assignedTo: 'data', createdAt: '3 hours ago', progress: 100, dependencies: [] },
+  { id: 'task-003', title: 'Update product roadmap', priority: 'high', status: 'processing', assignedTo: 'cpo', createdAt: '1 hour ago', progress: 45, dependencies: ['task-002'] },
+  { id: 'task-004', title: 'Deploy new feature', priority: 'medium', status: 'pending', assignedTo: 'rnd', createdAt: '30 min ago', progress: 0, dependencies: ['task-003'] },
+  { id: 'task-005', title: 'Customer feedback analysis', priority: 'low', status: 'pending', assignedTo: 'support', createdAt: '20 min ago', progress: 0, dependencies: [] },
+  { id: 'task-006', title: 'Budget allocation review', priority: 'critical', status: 'processing', assignedTo: 'cfo', createdAt: '45 min ago', progress: 30, dependencies: ['task-001'] },
+  { id: 'task-007', title: 'System architecture audit', priority: 'high', status: 'pending', assignedTo: 'cto', createdAt: '15 min ago', progress: 0, dependencies: [] },
+  { id: 'task-008', title: 'Marketing campaign launch', priority: 'high', status: 'completed', assignedTo: 'cmo', createdAt: '5 hours ago', progress: 100, dependencies: [] },
+  { id: 'task-009', title: 'Team performance review', priority: 'medium', status: 'pending', assignedTo: 'hr', createdAt: '10 min ago', progress: 0, dependencies: [] },
+  { id: 'task-010', title: 'Operations workflow optimization', priority: 'low', status: 'completed', assignedTo: 'ops', createdAt: '6 hours ago', progress: 100, dependencies: [] }
+])
+
+const messages = ref<Message[]>([
+  { id: 'msg-001', sender: 'ceo', receiver: 'cfo', type: 'request', content: 'Please prepare Q1 financial report', timestamp: '2 min ago', priority: 'critical' },
+  { id: 'msg-002', sender: 'cfo', receiver: 'ceo', type: 'response', content: 'Q1 financial report ready for review', timestamp: '1 min ago', priority: 'critical' },
+  { id: 'msg-003', sender: 'ceo', receiver: 'cpo', type: 'task', content: 'Update product roadmap based on market data', timestamp: '3 min ago', priority: 'high' },
+  { id: 'msg-004', sender: 'cpo', receiver: 'cto', type: 'request', content: 'Assess technical feasibility of new feature', timestamp: '2 min ago', priority: 'high' },
+  { id: 'msg-005', sender: 'cto', receiver: 'rnd', type: 'task', content: 'Start implementation of features', timestamp: '1 min ago', priority: 'high' },
+  { id: 'msg-006', sender: 'rnd', receiver: 'cto', type: 'status', content: 'Implementation 45% complete', timestamp: '30 sec ago', priority: 'medium' },
+  { id: 'msg-007', sender: 'data', receiver: 'cmo', type: 'notification', content: 'Market analysis complete', timestamp: '5 min ago', priority: 'medium' },
+  { id: 'msg-008', sender: 'support', receiver: 'cpo', type: 'notification', content: 'Customer feedback collected', timestamp: '10 min ago', priority: 'low' },
+  { id: 'msg-009', sender: 'ops', receiver: 'ceo', type: 'notification', content: 'System health check completed', timestamp: '4 min ago', priority: 'low' },
+  { id: 'msg-010', sender: 'hr', receiver: 'ceo', type: 'request', content: 'Team performance data ready', timestamp: '15 min ago', priority: 'medium' }
+])
+
+const refreshInterval = ref<number | null>(null)
+
+const activeAgents = computed(() => agents.value.filter(a => a.status === 'active'))
+const busyAgents = computed(() => agents.value.filter(a => a.status === 'busy'))
+const totalTasks = computed(() => tasks.value.length)
+const completedTasks = computed(() => tasks.value.filter(t => t.status === 'completed').length)
+const pendingTasks = computed(() => tasks.value.filter(t => t.status === 'pending').length)
+const criticalTasks = computed(() => tasks.value.filter(t => t.priority === 'critical' && t.status !== 'completed').length)
+
+const priorityStats = computed(() => ({
+  critical: tasks.value.filter(t => t.priority === 'critical').length,
+  high: tasks.value.filter(t => t.priority === 'high').length,
+  medium: tasks.value.filter(t => t.priority === 'medium').length,
+  low: tasks.value.filter(t => t.priority === 'low').length
+}))
+
+const filteredTasks = ref<Task[]>(tasks.value)
+const taskSearch = ref('')
+const taskPriorityFilter = ref<string>('all')
+const taskStatusFilter = ref<string>('all')
+
+const filteredMessages = ref<Message[]>(messages.value)
+const messageSearch = ref('')
+const messageSenderFilter = ref<string>('all')
+const messageReceiverFilter = ref<string>('all')
+
+const filteredAgents = ref<Agent[]>(agents.value)
+const agentSearch = ref('')
+
+const updateData = () => {
+  messages.value.forEach(msg => {
+    msg.timestamp = 'just now'
+  })
+}
+
+onMounted(() => {
+  refreshInterval.value = window.setInterval(updateData, 3000)
+})
+
+onUnmounted(() => {
+  if (refreshInterval.value) {
+    clearInterval(refreshInterval.value)
+  }
+})
+
+const getPriorityColor = (priority: string) => {
+  switch (priority) {
+    case 'critical': return 'bg-amber-500'
+    case 'high': return 'bg-red-500'
+    case 'medium': return 'bg-blue-500'
+    case 'low': return 'bg-green-500'
+    default: return 'bg-gray-500'
+  }
+}
+
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case 'active': return 'text-green-400'
+    case 'busy': return 'text-yellow-400'
+    case 'idle': return 'text-gray-400'
+    case 'error': return 'text-red-500'
+    default: return 'text-gray-400'
+  }
+}
+</script>
+
+<template>
+  <div class="min-h-screen">
+    <header class="mb-8 pb-6 border-b border-gray-800">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h1 class="text-4xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-r from-accent to-success">
+            SuperMan AI Dashboard
+          </h1>
+          <p class="text-gray-400 mt-2">Multi-Agent System Visualization</p>
+        </div>
+        <div class="text-right">
+          <div class="text-2xl font-bold text-accent">{{agents.filter(a => a.status === 'active').length}}/11</div>
+          <div class="text-sm text-gray-400">Active Agents</div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-secondary rounded-lg p-4 border border-gray-700">
+          <div class="text-3xl font-bold text-success">{{completedTasks}}/{{totalTasks}}</div>
+          <div class="text-sm text-gray-400">Tasks Completed</div>
+        </div>
+        <div class="bg-secondary rounded-lg p-4 border border-gray-700">
+          <div class="text-3xl font-bold text-warning">{{pendingTasks}}</div>
+          <div class="text-sm text-gray-400">Pending Tasks</div>
+        </div>
+        <div class="bg-secondary rounded-lg p-4 border border-gray-700">
+          <div class="text-3xl font-bold text-danger">{{criticalTasks}}</div>
+          <div class="text-sm text-gray-400">Critical Tasks</div>
+        </div>
+        <div class="bg-secondary rounded-lg p-4 border border-gray-700">
+          <div class="text-3xl font-bold text-accent">{{busyAgents.length}}</div>
+          <div class="text-sm text-gray-400">Busy Agents</div>
+        </div>
+      </div>
+    </header>
+
+    <main class="space-y-6">
+      <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2 bg-secondary rounded-lg border border-gray-700 overflow-hidden">
+          <div class="p-4 border-b border-gray-700 bg-primary/50">
+            <h2 class="text-xl font-semibold flex items-center">
+              <span class="w-2 h-6 bg-accent mr-3 rounded-full"></span>
+              Agent Health Overview
+            </h2>
+          </div>
+          <div class="p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div v-for="agent in agents.slice(0, 9)" :key="agent.id" class="bg-primary rounded-lg p-3 border border-gray-700 hover:border-accent transition-colors">
+              <div class="flex items-center justify-between mb-2">
+                <div>
+                  <div class="font-semibold text-accent">{{agent.name}}</div>
+                  <div class="text-sm text-gray-400">{{agent.role}}</div>
+                </div>
+                <div :class="['w-3 h-3 rounded-full', getStatusColor(agent.status), agent.status === 'active' ? 'animate-pulse-fast' : '']"></div>
+              </div>
+              <div class="space-y-2">
+                <div class="flex items-center justify-between text-sm">
+                  <span class="text-gray-400">Tasks</span>
+                  <span class="text-gray-200 font-mono">{{agent.taskCount}}</span>
+                </div>
+                <div class="flex items-center justify-between text-sm">
+                  <span class="text-gray-400">Last Activity</span>
+                  <span class="text-gray-200 text-xs">{{agent.lastActivity}}</span>
+                </div>
+                <div>
+                  <div class="flex justify-between text-xs mb-1">
+                    <span class="text-gray-400">Health</span>
+                    <span class="text-gray-200 font-mono">{{agent.health}}%</span>
+                  </div>
+                  <div class="w-full bg-gray-700 rounded-full h-2">
+                    <div :class="['h-2 rounded-full', agent.health > 80 ? 'bg-green-500' : agent.health > 60 ? 'bg-yellow-500' : 'bg-red-500']" :style="{ width: agent.health + '%' }"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-secondary rounded-lg border border-gray-700 overflow-hidden">
+          <div class="p-4 border-b border-gray-700 bg-primary/50">
+            <h2 class="text-xl font-semibold flex items-center">
+              <span class="w-2 h-6 bg-warning mr-3 rounded-full"></span>
+              Priority Distribution
+            </h2>
+          </div>
+          <div class="p-6 space-y-4">
+            <div v-for="priority in ['critical', 'high', 'medium', 'low']" :key="priority" class="space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="capitalize text-sm font-medium">{{priority}} Tasks</span>
+                <span class="font-mono text-sm">{{priorityStats[priority as keyof typeof priorityStats]}}</span>
+              </div>
+              <div class="w-full bg-gray-700 rounded-full h-3 overflow-hidden">
+                <div :class="['h-3 rounded-full', getPriorityColor(priority)]" :style="{ width: (priorityStats[priority as keyof typeof priorityStats] / totalTasks * 100) + '%' }"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2 bg-secondary rounded-lg border border-gray-700 overflow-hidden">
+          <div class="p-4 border-b border-gray-700 bg-primary/50 flex flex-wrap justify-between items-center gap-4">
+            <h2 class="text-xl font-semibold flex items-center">
+              <span class="w-2 h-6 bg-blue-500 mr-3 rounded-full"></span>
+              Active Tasks
+            </h2>
+            <div class="flex gap-2">
+              <input v-model="taskSearch" placeholder="Search tasks..." class="bg-primary border border-gray-600 rounded px-3 py-2 text-sm focus:border-accent focus:outline-none">
+              <select v-model="taskPriorityFilter" class="bg-primary border border-gray-600 rounded px-3 py-2 text-sm focus:border-accent focus:outline-none">
+                <option value="all">All Priorities</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+              <select v-model="taskStatusFilter" class="bg-primary border border-gray-600 rounded px-3 py-2 text-sm focus:border-accent focus:outline-none">
+                <option value="all">All Status</option>
+                <option value="pending">Pending</option>
+                <option value="processing">Processing</option>
+                <option value="completed">Completed</option>
+                <option value="failed">Failed</option>
+              </select>
+            </div>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left">
+              <thead class="bg-primary/50 border-b border-gray-700">
+                <tr>
+                  <th class="p-3 text-sm font-medium text-gray-400">ID</th>
+                  <th class="p-3 text-sm font-medium text-gray-400">Title</th>
+                  <th class="p-3 text-sm font-medium text-gray-400">Priority</th>
+                  <th class="p-3 text-sm font-medium text-gray-400">Status</th>
+                  <th class="p-3 text-sm font-medium text-gray-400">Assigned To</th>
+                  <th class="p-3 text-sm font-medium text-gray-400">Progress</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="task in filteredTasks" :key="task.id" class="border-b border-gray-800 hover:bg-gray-800/30 transition-colors">
+                  <td class="p-3 font-mono text-sm text-gray-400">{{task.id}}</td>
+                  <td class="p-3 text-sm">{{task.title}}</td>
+                  <td class="p-3">
+                    <span :class="['px-2 py-1 rounded text-xs font-medium capitalize', getPriorityColor(task.priority)]">
+                      {{task.priority}}
+                    </span>
+                  </td>
+                  <td class="p-3">
+                    <span :class="['px-2 py-1 rounded text-xs font-medium', {
+                      'bg-green-500/20 text-green-400': task.status === 'completed',
+                      'bg-blue-500/20 text-blue-400': task.status === 'processing',
+                      'bg-gray-500/20 text-gray-400': task.status === 'pending'
+                    }]" class="capitalize">
+                      {{task.status}}
+                    </span>
+                  </td>
+                  <td class="p-3 text-sm text-gray-300 capitalize">{{task.assignedTo}}</td>
+                  <td class="p-3">
+                    <div class="flex items-center gap-2">
+                      <div class="flex-1 bg-gray-700 rounded-full h-2 max-w-[80px]">
+                        <div :class="['h-2 rounded-full', task.progress === 100 ? 'bg-green-500' : 'bg-accent']" :style="{ width: task.progress + '%' }"></div>
+                      </div>
+                      <span class="text-xs font-mono text-gray-400">{{task.progress}}%</span>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="bg-secondary rounded-lg border border-gray-700 overflow-hidden">
+          <div class="p-4 border-b border-gray-700 bg-primary/50">
+            <h2 class="text-xl font-semibold flex items-center">
+              <span class="w-2 h-6 bg-pink-500 mr-3 rounded-full"></span>
+              System Activity
+            </h2>
+          </div>
+          <div class="max-h-[400px] overflow-y-auto">
+            <div class="p-4 space-y-4">
+              <div v-for="message in messages.slice(0, 8)" :key="message.id" class="flex items-start gap-3">
+                <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-xs font-bold text-accent">{{message.sender.substring(0, 2).toUpperCase()}}</div>
+                <div>
+                  <div class="flex items-center gap-2 mb-1">
+                    <span class="text-sm font-medium capitalize text-gray-200">{{message.sender}}</span>
+                    <span class="text-gray-500">→</span>
+                    <span class="text-sm font-medium capitalize text-gray-200">{{message.receiver}}</span>
+                  </div>
+                  <div class="text-sm text-gray-300 mb-1">{{message.content}}</div>
+                  <div class="flex items-center gap-2 text-xs text-gray-500">
+                    <span class="capitalize">{{message.type}}</span>
+                    <span>•</span>
+                    <span>{{message.timestamp}}</span>
+                    <span :class="['w-2 h-2 rounded-full', getPriorityColor(message.priority)]"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="bg-secondary rounded-lg border border-gray-700 overflow-hidden">
+        <div class="p-4 border-b border-gray-700 bg-primary/50">
+          <h2 class="text-xl font-semibold flex items-center">
+            <span class="w-2 h-6 bg-purple-500 mr-3 rounded-full"></span>
+            Agent Directory
+          </h2>
+        </div>
+        <div class="p-4">
+          <input v-model="agentSearch" placeholder="Search agents..." class="w-full bg-primary border border-gray-600 rounded px-3 py-2 mb-4 focus:border-accent focus:outline-none">
+          <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            <div v-for="agent in filteredAgents" :key="agent.id" class="bg-primary rounded-lg p-4 border border-gray-700 hover:border-accent transition-all hover:shadow-lg hover:shadow-accent/10">
+              <div class="w-12 h-12 rounded-full bg-gradient-to-br from-accent to-purple-500 flex items-center justify-center text-white font-bold text-lg mb-3 mx-auto">
+                {{agent.name.substring(0, 1)}}
+              </div>
+              <div class="text-center">
+                <div class="font-semibold text-gray-200 capitalize">{{agent.name}}</div>
+                <div class="text-xs text-gray-400 mt-1 capitalize">{{agent.role}}</div>
+                <div class="mt-3 text-xs text-gray-500">
+                  <div class="flex items-center justify-center gap-1">
+                    <div :class="['w-2 h-2 rounded-full', getStatusColor(agent.status)]"></div>
+                    <span class="capitalize">{{agent.status}}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</template>

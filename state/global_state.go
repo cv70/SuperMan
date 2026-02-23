@@ -202,7 +202,6 @@ func (gs *GlobalState) AddMessage(msg *ds.Message) {
 	gs.Messages = append(gs.Messages, msg)
 	gs.Version++
 }
-
 // GetMessages 获取消息
 func (gs *GlobalState) GetMessages() []*ds.Message {
 	gs.mu.RLock()
@@ -212,6 +211,20 @@ func (gs *GlobalState) GetMessages() []*ds.Message {
 	copy(messages, gs.Messages)
 	return messages
 }
+
+// GetTasks 获取所有任务
+func (gs *GlobalState) GetTasks() map[string]*ds.Task {
+	gs.mu.RLock()
+	defer gs.mu.RUnlock()
+
+	tasks := make(map[string]*ds.Task, len(gs.Tasks))
+	for id, task := range gs.Tasks {
+		tasks[id] = task
+	}
+	return tasks
+}
+
+// GetMessagesByReceiver 根据接收者获取消息
 
 // GetMessagesByReceiver 根据接收者获取消息
 func (gs *GlobalState) GetMessagesByReceiver(receiver string) []*ds.Message {
